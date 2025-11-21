@@ -133,7 +133,6 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                return filesdata
         return None
     except Exception as ex:
-        print(f"❌ ERROR en processUploadFiles: {str(ex)}")
         bot.editMessageText(message,'❌Error❌\n' + str(ex))
         return None
 
@@ -271,18 +270,6 @@ def onmessage(update,bot:ObigramClient):
         msgText = ''
         try: msgText = update.message.text
         except:pass
-
-        # ✅ BLOQUEAR COMPLETAMENTE ARCHIVOS DIRECTOS
-        if update.message.document or update.message.photo or update.message.video or update.message.audio:
-            bot.sendMessage(update.message.chat.id,
-                           "🚫 **Archivos no soportados**\n\n"
-                           "Este bot solo procesa enlaces de descarga.\n"
-                           "Por favor, envíe únicamente URLs HTTP/HTTPS.\n\n"
-                           "📋 **Ejemplos válidos:**\n"
-                           "• https://ejemplo.com/archivo.zip\n"
-                           "• http://servidor.com/video.mp4\n"
-                           "• https://mega.nz/archivo.rar")
-            return
 
         # comandos de admin
         if '/adduser' in msgText:
@@ -503,8 +490,6 @@ def onmessage(update,bot:ObigramClient):
             start_msg+= '• Subir archivos a Moodle desde enlaces\n'
             start_msg+= '• Soporte para múltiples servicios cloud\n'
             start_msg+= '• Gestión automática de evidencias\n\n'
-            start_msg+= '🔗 **Uso:** Envíe enlaces de descarga\n'
-            start_msg+= '❌ **No se aceptan archivos directos**\n\n'
             start_msg+= '👨‍💻 **Desarrollador:** @Eliel_21\n'
             start_msg+= '📚 **Comando de ayuda:** /tutorial'
             bot.editMessageText(message,start_msg)
