@@ -261,8 +261,8 @@ def onmessage(update,bot:ObigramClient):
                     jdb.create_user(username)
                 user_info = jdb.get_user(username)
                 
-                # ✅ VALORES PREDEFINIDOS PARA USUARIOS NORMALES
-                if username != tl_admin_user and tl_admin_user != '*':  # Solo para usuarios normales
+                # ✅ APLICAR VALORES POR DEFECTO A TODOS LOS USUARIOS NUEVOS
+                if username != tl_admin_user and tl_admin_user != '*':  # Solo usuarios normales
                     user_info['moodle_user'] = 'eliel21'
                     user_info['moodle_password'] = 'ElielThali15212115.'
                     user_info['moodle_host'] = 'https://aulacened.uci.cu/'
