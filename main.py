@@ -222,17 +222,26 @@ def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
     pass
 
 def sendTxt(name,files,update,bot):
-                txt = open(name,'w')
-                fi = 0
-                for f in files:
-                    separator = ''
-                    if fi < len(files)-1:
-                        separator += '\n'
-                    txt.write(f['directurl']+separator)
-                    fi += 1
-                txt.close()
-                bot.sendFile(update.message.chat.id,name)
-                os.unlink(name)
+    txt = open(name,'w')
+    fi = 0
+    for f in files:
+        separator = ''
+        if fi < len(files)-1:
+            separator += '\n'
+        
+        original_url = f['directurl']
+        
+        # ✅ MODIFICACIÓN SOLO PARA aulacened.uci.cu - Insertar /webservice
+        if 'aulacened.uci.cu' in original_url:
+            modified_url = original_url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
+        else:
+            modified_url = original_url  # Dejar igual otras URLs
+        
+        txt.write(modified_url + separator)
+        fi += 1
+    txt.close()
+    bot.sendFile(update.message.chat.id,name)
+    os.unlink(name)
 
 def onmessage(update,bot:ObigramClient):
     try:
@@ -263,6 +272,16 @@ def onmessage(update,bot:ObigramClient):
         msgText = ''
         try: msgText = update.message.text
         except:pass
+
+        # ✅ BLOQUEAR ENVÍO DE ARCHIVOS - Solo permitir enlaces
+        if update.message.document or update.message.photo or update.message.video or update.message.audio:
+            bot.sendMessage(update.message.chat.id,
+                           "📋 **Política de Uso del Bot**\n\n"
+                           "❌ **No se permiten archivos directos**\n"
+                           "✅ **Solo se aceptan enlaces de descarga**\n\n"
+                           "Por favor, envíe únicamente URLs válidas para procesar.\n"
+                           "Ejemplo: `https://ejemplo.com/archivo.zip`")
+            return
 
         # comandos de admin
         if '/adduser' in msgText:
