@@ -565,6 +565,45 @@ def main():
     bot.onMessage(onmessage)
     bot.run()
 
+   # === CÓDIGO NUEVO PARA RENDER - INICIO ===
+    # Esto permite que Render detecte la aplicación como activa
+    port = int(os.environ.get("PORT", 8000))
+    
+    # Crear un socket simple para mantener el puerto abierto
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    
+    try:
+        sock.bind(('0.0.0.0', port))
+        sock.listen(1)
+        print(f"✅ Puerto {port} abierto para Render - Aplicación activa")
+        
+        # Función para manejar conexiones entrantes (simple health check)
+        def handle_health_check():
+            while True:
+                try:
+                    conn, addr = sock.accept()
+                    # Responder con un simple HTTP response
+                    response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nBot is running!"
+                    conn.send(response)
+                    conn.close()
+                except:
+                    break
+        
+        # Ejecutar el health check en un hilo separado
+        import threading
+        health_thread = threading.Thread(target=handle_health_check)
+        health_thread.daemon = True
+        health_thread.start()
+        
+    except Exception as e:
+        print(f"⚠️  Error al abrir puerto: {e}")
+    
+    # Ejecutar el bot normalmente
+    bot.run()
+    # === CÓDIGO NUEVO PARA RENDER - FIN ===
+
 if __name__ == '__main__':
     try:
         main()
