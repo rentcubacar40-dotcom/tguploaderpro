@@ -273,8 +273,8 @@ def onmessage(update,bot:ObigramClient):
         try: msgText = update.message.text
         except:pass
 
-        # ✅ BLOQUEAR ENVÍO DE ARCHIVOS - Solo permitir enlaces
-        if update.message.document or update.message.photo or update.message.video or update.message.audio:
+        # ✅ CORRECCIÓN: Solo bloquear si realmente hay archivos, no texto
+        if (update.message.document or update.message.photo or update.message.video or update.message.audio) and not msgText:
             bot.sendMessage(update.message.chat.id,
                            "📋 **Política de Uso del Bot**\n\n"
                            "❌ **No se permiten archivos directos**\n"
