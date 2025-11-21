@@ -21,6 +21,7 @@ from ProxyCloud import ProxyCloud
 import ProxyCloud
 import socket
 import S5Crypto
+import threading
 
 
 
@@ -554,6 +555,30 @@ def onmessage(update,bot:ObigramClient):
     except Exception as ex:
            print(str(ex))
 
+def start_health_server(port):
+    """Inicia un servidor HTTP simple para health checks"""
+    try:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('0.0.0.0', port))
+        server_socket.listen(5)
+        print(f"✅ Health check server running on port {port}")
+        
+        while True:
+            try:
+                client_socket, addr = server_socket.accept()
+                request = client_socket.recv(1024).decode('utf-8')
+                
+                # Responder con HTTP 200 OK
+                response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nBot is running!"
+                client_socket.send(response.encode('utf-8'))
+                client_socket.close()
+            except Exception as e:
+                print(f"Health check error: {e}")
+                break
+                
+    except Exception as e:
+        print(f"❌ Health server failed: {e}")
 
 def main():
     bot_token = os.environ.get('bot_token')
@@ -563,49 +588,25 @@ def main():
 
     bot = ObigramClient(bot_token)
     bot.onMessage(onmessage)
-    bot.run()
-
-   # === CÓDIGO NUEVO PARA RENDER - INICIO ===
-    # Esto permite que Render detecte la aplicación como activa
+    
+    # Obtener puerto de Render
     port = int(os.environ.get("PORT", 5000))
     
-    # Crear un socket simple para mantener el puerto abierto
-    import socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # Iniciar servidor de health check en un hilo separado
+    health_thread = threading.Thread(target=start_health_server, args=(port,))
+    health_thread.daemon = True
+    health_thread.start()
     
-    try:
-        sock.bind(('0.0.0.0', port))
-        sock.listen(1)
-        print(f"✅ Puerto {port} abierto para Render - Aplicación activa")
-        
-        # Función para manejar conexiones entrantes (simple health check)
-        def handle_health_check():
-            while True:
-                try:
-                    conn, addr = sock.accept()
-                    # Responder con un simple HTTP response
-                    response = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nBot is running!"
-                    conn.send(response)
-                    conn.close()
-                except:
-                    break
-        
-        # Ejecutar el health check en un hilo separado
-        import threading
-        health_thread = threading.Thread(target=handle_health_check)
-        health_thread.daemon = True
-        health_thread.start()
-        
-    except Exception as e:
-        print(f"⚠️  Error al abrir puerto: {e}")
+    print(f"🚀 Bot starting with health check on port {port}")
     
-    # Ejecutar el bot normalmente
+    # Ejecutar el bot
     bot.run()
-    # === CÓDIGO NUEVO PARA RENDER - FIN ===
 
 if __name__ == '__main__':
     try:
         main()
-    except:
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        # Reintentar después de 5 segundos
+        time.sleep(5)
         main()
