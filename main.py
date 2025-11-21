@@ -229,13 +229,12 @@ def sendTxt(name,files,update,bot):
         if fi < len(files)-1:
             separator += '\n'
         
+        # ✅ CAMBIO 1: Modificar enlaces de aulacened.uci.cu
         original_url = f['directurl']
-        
-        # ✅ MODIFICACIÓN SOLO PARA aulacened.uci.cu - Insertar /webservice
         if 'aulacened.uci.cu' in original_url:
             modified_url = original_url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
         else:
-            modified_url = original_url  # Dejar igual otras URLs
+            modified_url = original_url
         
         txt.write(modified_url + separator)
         fi += 1
@@ -273,14 +272,16 @@ def onmessage(update,bot:ObigramClient):
         try: msgText = update.message.text
         except:pass
 
-        # ✅ CORRECCIÓN: Solo bloquear si realmente hay archivos, no texto
-        if (update.message.document or update.message.photo or update.message.video or update.message.audio) and not msgText:
+        # ✅ CAMBIO 2: Bloquear archivos con mensaje profesional
+        if update.message.document or update.message.photo or update.message.video or update.message.audio:
             bot.sendMessage(update.message.chat.id,
-                           "📋 **Política de Uso del Bot**\n\n"
-                           "❌ **No se permiten archivos directos**\n"
-                           "✅ **Solo se aceptan enlaces de descarga**\n\n"
-                           "Por favor, envíe únicamente URLs válidas para procesar.\n"
-                           "Ejemplo: `https://ejemplo.com/archivo.zip`")
+                           "🚫 **Archivos no permitidos**\n\n"
+                           "Este bot solo procesa enlaces de descarga.\n"
+                           "Por favor, envíe únicamente URLs válidas.\n\n"
+                           "📋 **Uso correcto:**\n"
+                           "• Envíe enlaces HTTP/HTTPS\n"
+                           "• Use comandos como /tutorial para ayuda\n"
+                           "• Configure su cuenta con /account")
             return
 
         # comandos de admin
@@ -496,10 +497,14 @@ def onmessage(update,bot:ObigramClient):
         thread.store('msg',message)
 
         if '/start' in msgText:
-            start_msg = 'Bot          : TGUploaderPro v7.0 Fixed\n'
-            start_msg+= 'Desarrollador: @obisoftdevel\n'
-            start_msg+= 'Api          : https://github.com/ObisoftDev/tguploaderpro\n'
-            start_msg+= 'Uso          :Envia Enlaces De Descarga y Archivos Para Procesar (Configure Antes De Empezar , Vea El /tutorial)\n'
+            # ✅ CAMBIO 3: Nuevo mensaje de bienvenida
+            start_msg = '👋 **Bienvenido al Bot de Subidas**\n\n'
+            start_msg+= '📤 **Funcionalidades:**\n'
+            start_msg+= '• Subida de archivos desde enlaces\n'
+            start_msg+= '• Soporte para múltiples servicios\n'
+            start_msg+= '• Gestión de cuentas Moodle/Cloud\n\n'
+            start_msg+= '⚡ **Desarrollado por:** @Eliel_21\n\n'
+            start_msg+= '📖 Use /tutorial para ver las instrucciones de uso'
             bot.editMessageText(message,start_msg)
         elif '/files' == msgText and user_info['cloudtype']=='moodle':
              proxy = ProxyCloud.parse(user_info['proxy'])
