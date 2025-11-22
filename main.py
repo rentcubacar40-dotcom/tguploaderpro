@@ -266,7 +266,7 @@ def onmessage(update,bot:ObigramClient):
     try:
         thread = bot.this_thread
         username = update.message.sender.username
-        tl_admin_user = os.environ.get('tl_admin_user','Eliel_21')
+        tl_admin_user = os.environ.get('tl_admin_user','Eliel_21','Thali355')
 
         jdb = JsonDatabase('database')
         jdb.check_create()
