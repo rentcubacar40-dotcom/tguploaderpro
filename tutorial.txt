@@ -1,1 +1,75 @@
+╭━━━━❰📚 TUTORIAL COMPLETO❱━➣
+┣⪼ 🤖 BOT DE SUBIDAS A MOODLE
+┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
+╰━━━━━━━━━━━━━━━➣
 
+╭━━━━❰⚠️ INFORMACIÓN IMPORTANTE❱━➣
+┣⪼ 🚫 NO se aceptan archivos directamente
+┣⪼ ✅ Solo funciona con ENLACES/URLs
+┣⪼ 🔗 El bot procesa enlaces automáticamente
+┣⪼ ⏱️ Enlaces duran 8-30 minutos
+╰━━━━━━━━━━━━━━━➣
+
+╭━━━━❰📥 CÓMO USAR EL BOT❱━➣
+┣⪼ 1️⃣ Consigue un enlace de descarga
+┣⪼ 2️⃣ Cópialo y pégaselo al bot
+┣⪼ 3️⃣ Espera a que procese
+┣⪼ 4️⃣ Recibe tus enlaces de Moodle
+╰━━━━━━━━━━━━━━━➣
+
+╭━━━━❰🔗 OBTENER ENLACES❱━➣
+┣⪼ 🌐 Enlaces HTTP/HTTPS públicos
+┣⪼ 📦 Links de archivos descargables
+┣⪼ 🔗 URLs de servicios de almacenamiento
+┣⪼ ⚡ Cualquier enlace directo funcional
+╰━━━━━━━━━━━━━━━➣
+
+╭━━━━❰📏 PROCESO AUTOMÁTICO❱━➣
+┣⪼ 📊 El bot detecta el tamaño automáticamente
+┣⪼ 🔄 Divide en partes si es necesario
+┣⪼ 📁 Genera enlaces individuales
+┣⪼ ⚡ Todo el proceso es automático
+╰━━━━━━━━━━━━━━━➣
+
+╭━━━━❰💡 RECOMENDACIONES❱━➣
+┣⪼ 🤖 Usa bots "File To Link" para archivos locales
+┣⪼ 🗜️ Usa bots compresores para archivos grandes
+┣⪼ 🔄 Descarga las partes de una en una
+┣⪼ ⏳ Así no se vencen los enlaces
+┣⪼ ✅ Mayor probabilidad de éxito
+╰━━━━━━━━━━━━━━━➣
+
+╭━━━━❰🔄 FLUJO RECOMENDADO❱━➣
+┣⪼ 1. Para archivos locales: usa bot File To Link
+┣⪼ 2. Para archivos grandes: comprime primero
+┣⪼ 3. Obtén el enlace descargable
+┣⪼ 4. Envíalo a este bot
+┣⪼ 5. Descarga partes individualmente
+┣⪼ 6. ¡Éxito garantizado! 🎉
+╰━━━━━━━━━━━━━━━➣
+
+╭━━━━❰❓ EJEMPLOS VÁLIDOS❱━➣
+┣⪼ ✅ https://ejemplo.com/archivo.zip
+┣⪼ ✅ https://drive.google.com/archivo.pdf
+┣⪼ ✅ https://servidor.com/documento.rar
+┣⪼ ❌ Archivos enviados directamente
+┣⪼ ❌ Enlaces que requieren acceso
+╰━━━━━━━━━━━━━━━➣
+
+╭━━━━❰🆘 SOLUCIÓN DE PROBLEMAS❱━➣
+┣⪼ 🔄 Si falla, prueba con otro enlace
+┣⪼ 🌐 Verifica que el enlace sea público
+┣⪼ ⏰ Enlaces válidos por 8-30 minutos
+┣⪼ 📞 Contacta al admin si hay errores
+╰━━━━━━━━━━━━━━━➣
+
+╭━━━━❰🎯 RESUMEN❱━➣
+┣⪼ 📤 Solo enlaces, no archivos
+┣⪼ 🤖 File To Link para archivos locales
+┣⪼ 🗜️ Compresión opcional para archivos grandes
+┣⪼ 🔄 Proceso totalmente automático
+┣⪼ ⏱️ Enlaces: 8-30 minutos
+┣⪼ 🚀 ¡Simple y eficiente!
+╰━━━━━━━━━━━━━━━➣
+
+¿Listo para comenzar? ¡Envía tu enlace! 🎊
