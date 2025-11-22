@@ -37,6 +37,23 @@ def format_s1_message(title, items):
     message += "╰━━━━━━━━━━━━━━━➣"
     return message
 
+def format_time(seconds):
+    """Formatea el tiempo de manera legible"""
+    if seconds <= 0:
+        return "00:00:00"
+    
+    try:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+        
+        if hours > 99:  # Si son más de 99 horas, mostrar en formato más compacto
+            return "99:59:59+"
+        
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    except:
+        return "00:00:00"
+
 def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
     try:
         bot = args[0]
@@ -53,19 +70,19 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
             current_mb = currentBits / (1024 * 1024)
             speed_mb = speed / (1024 * 1024) if speed > 0 else 0
             
-            # Calcular ETA
+            # Calcular ETA con formato mejorado
             if speed > 0:
                 remaining_bits = totalBits - currentBits
                 eta_seconds = remaining_bits / speed
-                eta_formatted = nice_time(eta_seconds)
+                eta_formatted = format_time(eta_seconds)
             else:
                 eta_formatted = "00:00:00"
             
-            # Mensaje con estilo S1
+            # Mensaje con estilo S1 corregido
             downloadingInfo = format_s1_message("📥 Descargando", [
                 f"[{progress_bar}]",
                 f"✅ Progreso: {percentage:.1f}%",
-                f"📦 Tamaño: {current_mb:.2f} / {total_mb:.2f} MB",
+                f"📦 Tamaño: {current_mb:.2f}/{total_mb:.2f} MB",
                 f"⚡ Velocidad: {speed_mb:.2f} MB/s",
                 f"⏳ Tiempo: {eta_formatted}"
             ])
@@ -98,21 +115,21 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
             current_mb = currentBits / (1024 * 1024)
             speed_mb = speed / (1024 * 1024) if speed > 0 else 0
             
-            # Calcular ETA
+            # Calcular ETA con formato mejorado
             if speed > 0:
                 remaining_bits = totalBits - currentBits
                 eta_seconds = remaining_bits / speed
-                eta_formatted = nice_time(eta_seconds)
+                eta_formatted = format_time(eta_seconds)
             else:
                 eta_formatted = "00:00:00"
             
             file_display = originalfile if originalfile else filename
             
-            # Mensaje con estilo S1
+            # Mensaje con estilo S1 corregido
             uploadingInfo = format_s1_message("📤 Subiendo", [
                 f"[{progress_bar}]",
                 f"✅ Progreso: {percentage:.1f}%",
-                f"📦 Tamaño: {current_mb:.2f} / {total_mb:.2f} MB",
+                f"📦 Tamaño: {current_mb:.2f}/{total_mb:.2f} MB",
                 f"⚡ Velocidad: {speed_mb:.2f} MB/s",
                 f"⏳ Tiempo: {eta_formatted}",
                 f"📄 Archivo: {file_display}"
