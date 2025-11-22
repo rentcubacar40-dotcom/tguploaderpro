@@ -45,24 +45,23 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
         if thread.getStore('stop'):
             downloader.stop()
         
-        # Calcular porcentaje correctamente
+        # Calcular porcentaje y crear barra de progreso S1
         if totalBits > 0:
             percentage = (currentBits / totalBits) * 100
             progress_bar = create_progress_bar(percentage)
-            
-            # Formatear tamaños y velocidad
             total_mb = totalBits / (1024 * 1024)
             current_mb = currentBits / (1024 * 1024)
             speed_mb = speed / (1024 * 1024) if speed > 0 else 0
             
-            # Calcular ETA si hay velocidad
+            # Calcular ETA
             if speed > 0:
                 remaining_bits = totalBits - currentBits
                 eta_seconds = remaining_bits / speed
                 eta_formatted = nice_time(eta_seconds)
             else:
-                eta_formatted = "Calculando..."
+                eta_formatted = "00:00:00"
             
+            # Mensaje con estilo S1
             downloadingInfo = format_s1_message("📥 Descargando", [
                 f"[{progress_bar}]",
                 f"✅ Progreso: {percentage:.1f}%",
@@ -76,12 +75,12 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
                 "✅ Progreso: 0%",
                 "📦 Tamaño: Calculando...",
                 "⚡ Velocidad: 0.00 MB/s",
-                "⏳ Tiempo: Calculando..."
+                "⏳ Tiempo: 00:00:00"
             ])
             
         bot.editMessageText(message, downloadingInfo)
     except Exception as ex: 
-        print(f"Error en downloadFile: {str(ex)}")
+        print(str(ex))
     pass
 
 def uploadFile(filename,currentBits,totalBits,speed,time,args):
@@ -91,26 +90,25 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
         originalfile = args[2]
         thread = args[3]
         
-        # Calcular porcentaje correctamente
+        # Calcular porcentaje y crear barra de progreso S1
         if totalBits > 0:
             percentage = (currentBits / totalBits) * 100
             progress_bar = create_progress_bar(percentage)
-            
-            # Formatear tamaños y velocidad
             total_mb = totalBits / (1024 * 1024)
             current_mb = currentBits / (1024 * 1024)
             speed_mb = speed / (1024 * 1024) if speed > 0 else 0
             
-            # Calcular ETA si hay velocidad
+            # Calcular ETA
             if speed > 0:
                 remaining_bits = totalBits - currentBits
                 eta_seconds = remaining_bits / speed
                 eta_formatted = nice_time(eta_seconds)
             else:
-                eta_formatted = "Calculando..."
+                eta_formatted = "00:00:00"
             
             file_display = originalfile if originalfile else filename
             
+            # Mensaje con estilo S1
             uploadingInfo = format_s1_message("📤 Subiendo", [
                 f"[{progress_bar}]",
                 f"✅ Progreso: {percentage:.1f}%",
@@ -125,25 +123,18 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
                 "✅ Progreso: 0%",
                 "📦 Tamaño: Calculando...",
                 "⚡ Velocidad: 0.00 MB/s",
-                "⏳ Tiempo: Calculando...",
+                "⏳ Tiempo: 00:00:00",
                 f"📄 Archivo: {filename}"
             ])
             
         bot.editMessageText(message, uploadingInfo)
     except Exception as ex: 
-        print(f"Error en uploadFile: {str(ex)}")
+        print(str(ex))
     pass
 
 def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jdb=None):
     try:
-        uploadingInfo = format_s1_message("🔄 Preparando", [
-            "📄 Iniciando subida...",
-            f"📦 Archivo: {filename}",
-            f"💾 Tamaño: {filesize/(1024*1024):.2f} MB",
-            "⏳ Preparando para subir"
-        ])
-        bot.editMessageText(message, uploadingInfo)
-        
+        bot.editMessageText(message,'<b>🔄 Preparando para subir...</b>', parse_mode='HTML')
         evidence = None
         fileid = None
         user_info = jdb.get_user(update.message.sender.username)
@@ -202,22 +193,12 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                     except:pass
                 return draftlist
             else:
-                errorInfo = format_s1_message("❌ Error Plataforma", [
-                    "No se pudo conectar",
-                    "Verifique credenciales",
-                    "Servidor no disponible"
-                ])
-                bot.editMessageText(message, errorInfo)
+                bot.editMessageText(message,'<b>❌ Error en la plataforma</b>', parse_mode='HTML')
         elif cloudtype == 'cloud':
             tokenize = False
             if user_info['tokenize']!=0:
                tokenize = True
-            uploadingInfo = format_s1_message("☁️ Subiendo Nube", [
-                "📤 Conectando con la nube...",
-                f"📦 Archivo: {filename}",
-                "⏳ Iniciando subida"
-            ])
-            bot.editMessageText(message, uploadingInfo)
+            bot.editMessageText(message,'<b>☁️ Subiendo archivo...</b>', parse_mode='HTML')
             host = user_info['moodle_host']
             user = user_info['moodle_user']
             passw = user_info['moodle_password']
@@ -236,13 +217,9 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                return filesdata
         return None
     except Exception as ex:
-        errorInfo = format_s1_message("❌ Error Proceso", [
-            "Error en el proceso de subida",
-            f"Detalle: {str(ex)}",
-            "Revise el archivo e intente nuevamente"
-        ])
-        bot.editMessageText(message, errorInfo)
+        bot.editMessageText(message,f'<b>❌ Error</b>\n<code>{str(ex)}</code>', parse_mode='HTML')
         return None
+
 
 def processFile(update,bot,message,file,thread=None,jdb=None):
     file_size = get_file_size(file)
@@ -252,13 +229,8 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
     client = None
     findex = 0
     if file_size > max_file_size:
-        compresingInfo = format_s1_message("🗜️ Comprimiendo", [
-            f"📦 Archivo: {file}",
-            f"💾 Tamaño original: {file_size/(1024*1024):.2f} MB",
-            f"📁 Tamaño por parte: {max_file_size/(1024*1024):.2f} MB",
-            "⏳ Dividiendo archivo..."
-        ])
-        bot.editMessageText(message, compresingInfo)
+        compresingInfo = infos.createCompresing(file,file_size,max_file_size)
+        bot.editMessageText(message,compresingInfo)
         zipname = str(file).split('.')[0] + createID()
         mult_file = zipfile.MultiFile(zipname,max_file_size)
         zip = zipfile.ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
@@ -269,18 +241,11 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         try:
             os.unlink(file)
         except:pass
-        file_upload_count = len(mult_file.files)
+        file_upload_count = len(zipfile.files)
     else:
         client = processUploadFiles(file,file_size,[file],update,bot,message,jdb=jdb)
         file_upload_count = 1
-    
-    preparingInfo = format_s1_message("📄 Preparando", [
-        "✅ Proceso completado",
-        "📦 Finalizando subida...",
-        "⏳ Generando enlaces"
-    ])
-    bot.editMessageText(message, preparingInfo)
-    
+    bot.editMessageText(message,'<b>📄 Preparando archivo...</b>', parse_mode='HTML')
     evidname = ''
     files = []
     if client:
@@ -312,29 +277,14 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
 
         bot.deleteMessage(message.chat.id,message.message_id)
-        
-        finishInfo = format_s1_message("✅ Completado", [
-            f"🎯 Archivo: {file}",
-            f"📦 Tamaño: {file_size/(1024*1024):.2f} MB",
-            f"📁 Partes: {file_upload_count} archivos",
-            f"📊 Evidencia: #{findex+1}",
-            "⏱️ Enlaces: 8-30 minutos (en algunos casos hasta 30 minutos)"
-        ])
-        
+        finishInfo = infos.createFinishUploading(file,file_size,max_file_size,file_upload_count,file_upload_count,findex)
         filesInfo = infos.createFileMsg(file,files)
-        bot.sendMessage(message.chat.id, finishInfo + '\n\n' + filesInfo, parse_mode='html')
+        bot.sendMessage(message.chat.id,finishInfo+'\n'+filesInfo,parse_mode='html')
         if len(files)>0:
             txtname = str(file).split('/')[-1].split('.')[0] + '.txt'
             sendTxt(txtname,files,update,bot)
 
 def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
-    processingInfo = format_s1_message("🔗 Procesando Enlace", [
-        "📥 Analizando URL...",
-        f"🔗 Enlace: {url}",
-        "⏳ Iniciando descarga"
-    ])
-    bot.editMessageText(message, processingInfo)
-    
     downloader = Downloader()
     file = downloader.download_url(url,progressfunc=downloadFile,args=(bot,message,thread))
     if not downloader.stoping:
@@ -344,10 +294,22 @@ def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
             megadl(update,bot,message,url,file_name,thread,jdb=jdb)
 
 def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
-    # Importar y usar mega si está disponible
-    # megadl = megacli.mega.Mega({'verbose': True})
-    # megadl.login()
-    # ... (código mega existente)
+    megadl = megacli.mega.Mega({'verbose': True})
+    megadl.login()
+    try:
+        info = megadl.get_public_url_info(megaurl)
+        file_name = info['name']
+        megadl.download_url(megaurl,dest_path=None,dest_filename=file_name,progressfunc=downloadFile,args=(bot,message,thread))
+        if not megadl.stoping:
+            processFile(update,bot,message,file_name,thread=thread)
+    except:
+        files = megaf.get_files_from_folder(megaurl)
+        for f in files:
+            file_name = f['name']
+            megadl._download_file(f['handle'],f['key'],dest_path=None,dest_filename=file_name,is_public=False,progressfunc=downloadFile,args=(bot,message,thread),f_data=f['data'])
+            if not megadl.stoping:
+                processFile(update,bot,message,file_name,thread=thread)
+        pass
     pass
 
 def sendTxt(name,files,update,bot):
@@ -359,15 +321,16 @@ def sendTxt(name,files,update,bot):
                 separator = '\n' if i < len(files) - 1 else ''
                 txt.write(f['directurl'] + separator)
         
-        # Mensaje informativo con estilo S1
-        info_msg = format_s1_message("📄 Archivo de Enlaces", [
-            f"📎 Nombre: {name}",
-            f"🔗 Enlaces incluidos: {len(files)}",
-            "⏱️ Duración: 8-30 minutos (en algunos casos hasta 30 minutos)",
-            "⬇️ Descarga el archivo TXT abajo"
-        ])
+        # Mensaje informativo
+        info_msg = f"""<b>📄 Archivo de enlaces generado</b>
+
+📎 <b>Nombre:</b> <code>{name}</code>
+🔗 <b>Enlaces incluidos:</b> {len(files)}
+⏱️ <b>Duración de enlaces:</b> 8-30 minutos
+
+⬇️ <b>Descarga el archivo TXT abajo</b>"""
         
-        bot.sendMessage(update.message.chat.id, info_msg)
+        bot.sendMessage(update.message.chat.id, info_msg, parse_mode='HTML')
         
         # Enviar el archivo txt
         bot.sendFile(update.message.chat.id, name)
@@ -406,8 +369,7 @@ def onmessage(update,bot:ObigramClient):
                 user_info = jdb.get_user(username)
                 jdb.save_data_user(username, user_info)
                 jdb.save()
-        else:
-            return
+        else:return
 
         msgText = ''
         try: 
@@ -424,50 +386,57 @@ def onmessage(update,bot:ObigramClient):
         # Si NO es admin y el mensaje es un COMANDO de configuración, bloquear
         if not isadmin and is_text and any(cmd in msgText for cmd in [
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
-            '/cloud', '/uptype', '/proxy', '/dir', '/tutorial', 
-            '/myuser', '/files', '/txt_', '/del_', '/delall'
+            '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
+            '/files', '/txt_', '/del_', '/delall', '/adduser', '/banuser', '/getdb'
         ]):
-            restricted_msg = format_s1_message("🚫 Acceso Restringido", [
-                "Comandos de configuración bloqueados",
-                "Disponibles solo para administradores",
-                "",
-                "✅ Puedes usar:",
-                "• Enlaces HTTP/HTTPS",
-                "• Comando /start para información"
-            ])
-            bot.sendMessage(update.message.chat.id, restricted_msg)
+            bot.sendMessage(update.message.chat.id,
+                           "<b>🚫 Acceso Restringido</b>\n\n"
+                           "Los comandos de configuración están disponibles solo para administradores.\n\n"
+                           "<b>✅ Comandos disponibles para ti:</b>\n"
+                           "• /start - Información del bot\n"
+                           "• /tutorial - Guía de uso completo\n"
+                           "• Enlaces HTTP/HTTPS para subir archivos",
+                           parse_mode='HTML')
             return
 
         # Si es un mensaje de texto normal (no comando, no enlace)
         if is_text and not msgText.startswith('/') and not 'http' in msgText:
             if isadmin:
-                admin_msg = format_s1_message("👋 ¡Hola Administrador!", [
-                    "📝 Comandos disponibles:",
-                    "• /start - Información del bot",
-                    "• /tutorial - Guía de uso", 
-                    "• /myuser - Mi configuración",
-                    "• /adduser @user - Agregar usuario",
-                    "• /banuser @user - Eliminar usuario",
-                    "• /getdb - Base de datos",
-                    "",
-                    "🌐 O envía enlace HTTP/HTTPS"
-                ])
-                bot.sendMessage(update.message.chat.id, admin_msg)
+                response_msg = """<b>👋 ¡Hola Administrador!</b>
+
+<b>📝 Comandos de administrador:</b>
+• /myuser - Mi configuración
+• /zips - Tamaño de partes
+• /account - Cuenta Moodle
+• /host - Servidor Moodle
+• /repoid - ID Repositorio
+• /cloud - Tipo de nube
+• /uptype - Tipo de subida
+• /proxy - Configurar proxy
+• /dir - Directorio cloud
+• /files - Ver archivos
+• /adduser - Agregar usuario
+• /banuser - Eliminar usuario
+• /getdb - Base de datos
+
+<b>📚 Comandos para todos:</b>
+• /start - Información del bot
+• /tutorial - Guía completa
+
+<b>🌐 O envía un enlace HTTP/HTTPS para subir archivos</b>"""
             else:
-                user_msg = format_s1_message("👋 ¡Bienvenido!", [
-                    "🤖 Bot de Subidas a Moodle",
-                    "",
-                    "📤 Para usar el bot:",
-                    "1. Envía enlace HTTP/HTTPS",
-                    "2. Bot lo procesará automáticamente", 
-                    "3. Recibirás enlaces de descarga",
-                    "",
-                    "🔗 Ejemplo: https://ejemplo.com/archivo.zip",
-                    "⏱️ Enlaces: 8-30 minutos (en algunos casos hasta 30 minutos)",
-                    "",
-                    "💡 Usa /start para más información"
-                ])
-                bot.sendMessage(update.message.chat.id, user_msg)
+                response_msg = """<b>👋 ¡Bienvenido!</b>
+
+<b>✅ Comandos disponibles:</b>
+• /start - Información del bot
+• /tutorial - Guía completa de uso
+
+<b>📤 Para subir archivos:</b>
+Envía cualquier enlace HTTP/HTTPS y el bot lo procesará automáticamente.
+
+<b>⏱️ Los enlaces generados duran 8-30 minutos</b>"""
+            
+            bot.sendMessage(update.message.chat.id, response_msg, parse_mode='HTML')
             return
 
         # comandos de admin (solo para administrador)
@@ -478,143 +447,64 @@ def onmessage(update,bot:ObigramClient):
                     user = str(msgText).split(' ')[1]
                     jdb.create_user(user)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Usuario Agregado", [
-                        f"Usuario: @{user}",
-                        "Ahora tiene acceso al bot",
-                        "Puede enviar enlaces para subir"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    msg = f'<b>✅ ¡Perfecto!</b> @{user} ahora tiene acceso al bot'
+                    bot.sendMessage(update.message.chat.id, msg, parse_mode='HTML')
                 except:
-                    error_msg = format_s1_message("❌ Error en Comando", [
-                        "Formato correcto:",
-                        "/adduser username",
-                        "Ejemplo: /adduser juan123"
-                    ])
-                    bot.sendMessage(update.message.chat.id, error_msg)
+                    bot.sendMessage(update.message.chat.id,'<b>❌ Error en el comando:</b> <code>/adduser username</code>', parse_mode='HTML')
             else:
-                no_permission_msg = format_s1_message("❌ Sin Permisos", [
-                    "Comando restringido",
-                    "Solo para administradores",
-                    "Contacta al administrador"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
-            
         if '/banuser' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
                 try:
                     user = str(msgText).split(' ')[1]
                     if user == username:
-                        self_ban_msg = format_s1_message("❌ Error", [
-                            "No puede banearse a sí mismo",
-                            "Operación no permitida",
-                            "Contacte a otro administrador"
-                        ])
-                        bot.sendMessage(update.message.chat.id, self_ban_msg)
+                        bot.sendMessage(update.message.chat.id,'<b>❌ No puede banearse a sí mismo</b>', parse_mode='HTML')
                         return
                     jdb.remove(user)
                     jdb.save()
-                    ban_msg = format_s1_message("🚫 Usuario Baneado", [
-                        f"Usuario: @{user}",
-                        "Acceso al bot revocado",
-                        "No podrá enviar más enlaces"
-                    ])
-                    bot.sendMessage(update.message.chat.id, ban_msg)
+                    msg = f'<b>🚫 Usuario</b> @{user} <b>ha sido baneado</b>'
+                    bot.sendMessage(update.message.chat.id, msg, parse_mode='HTML')
                 except:
-                    error_msg = format_s1_message("❌ Error en Comando", [
-                        "Formato correcto:",
-                        "/banuser username", 
-                        "Ejemplo: /banuser juan123"
-                    ])
-                    bot.sendMessage(update.message.chat.id, error_msg)
+                    bot.sendMessage(update.message.chat.id,'<b>❌ Error en el comando:</b> <code>/banuser username</code>', parse_mode='HTML')
             else:
-                no_permission_msg = format_s1_message("❌ Sin Permisos", [
-                    "Comando restringido",
-                    "Solo para administradores",
-                    "Contacta al administrador"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
-            
         if '/getdb' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
-                db_msg = format_s1_message("📦 Base de Datos", [
-                    "Base de datos del bot",
-                    "Contiene información de usuarios",
-                    "Enviando archivo..."
-                ])
-                bot.sendMessage(update.message.chat.id, db_msg)
+                bot.sendMessage(update.message.chat.id,'<b>📦 Base de datos:</b>', parse_mode='HTML')
                 bot.sendFile(update.message.chat.id,'database.jdb')
             else:
-                no_permission_msg = format_s1_message("❌ Sin Permisos", [
-                    "Comando restringido",
-                    "Solo para administradores",
-                    "Contacta al administrador"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
+            return
+
+        # COMANDO TUTORIAL - DISPONIBLE PARA TODOS
+        if '/tutorial' in msgText:
+            try:
+                tuto = open('tuto.txt','r', encoding='utf-8')
+                tutorial_content = tuto.read()
+                tuto.close()
+                bot.sendMessage(update.message.chat.id, tutorial_content)
+            except Exception as e:
+                print(f"Error cargando tutorial: {e}")
+                bot.sendMessage(update.message.chat.id,'<b>📚 Archivo de tutorial no disponible</b>', parse_mode='HTML')
             return
 
         # comandos de usuario (solo para administrador)
-        if '/tutorial' in msgText:
-            if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para acceder a esta función"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
-                return
-            try:
-                tuto = open('tuto.txt','r')
-                tutorial_content = tuto.read()
-                tuto.close()
-                # Si el tutorial es largo, usar estilo S1
-                if len(tutorial_content.split('\n')) > 3:
-                    tutorial_lines = tutorial_content.split('\n')
-                    tutorial_msg = format_s1_message("📚 Tutorial", tutorial_lines[:10])  # Máximo 10 líneas
-                    bot.sendMessage(update.message.chat.id, tutorial_msg)
-                else:
-                    bot.sendMessage(update.message.chat.id, tutorial_content)
-            except:
-                no_tuto_msg = format_s1_message("📚 Tutorial", [
-                    "Archivo de tutorial no disponible",
-                    "Contacta al administrador",
-                    "Para obtener ayuda"
-                ])
-                bot.sendMessage(update.message.chat.id, no_tuto_msg)
-            return
-            
         if '/myuser' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para ver tu configuración"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             getUser = user_info
             if getUser:
                 statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                # Convertir a formato S1 si es largo
-                if len(statInfo.split('\n')) > 3:
-                    stat_lines = statInfo.split('\n')
-                    stat_msg = format_s1_message("👤 Mi Configuración", stat_lines)
-                    bot.sendMessage(update.message.chat.id, stat_msg, parse_mode='HTML')
-                else:
-                    bot.sendMessage(update.message.chat.id, statInfo, parse_mode='HTML')
+                bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
                 return
-                
         if '/zips' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar configuración"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             getUser = user_info
             if getUser:
@@ -623,30 +513,14 @@ def onmessage(update,bot:ObigramClient):
                    getUser['zips'] = size
                    jdb.save_data_user(username,getUser)
                    jdb.save()
-                   zip_msg = format_s1_message("✅ Zips Configurados", [
-                       f"Tamaño: {sizeof_fmt(size*1024*1024)}",
-                       f"Por parte: {size} MB", 
-                       "Configuración guardada correctamente"
-                   ])
-                   bot.sendMessage(update.message.chat.id, zip_msg)
+                   msg = f'<b>✅ Zips configurados a</b> {sizeof_fmt(size*1024*1024)} <b>por parte</b>'
+                   bot.sendMessage(update.message.chat.id,msg, parse_mode='HTML')
                 except:
-                   error_msg = format_s1_message("❌ Error en Comando", [
-                       "Formato incorrecto",
-                       "Uso correcto:",
-                       "/zips tamaño_en_mb",
-                       "Ejemplo: /zips 100"
-                   ])
-                   bot.sendMessage(update.message.chat.id, error_msg)
+                   bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/zips tamaño_en_mb</code>', parse_mode='HTML')
                 return
-                
         if '/account' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar credenciales"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 account = str(msgText).split(' ',2)[1].split(',')
@@ -658,30 +532,14 @@ def onmessage(update,bot:ObigramClient):
                     getUser['moodle_password'] = passw
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Cuenta Actualizada", [
-                        f"Usuario: {user}",
-                        "Contraseña actualizada",
-                        "Configuración guardada"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
-                error_msg = format_s1_message("❌ Error en Comando", [
-                    "Formato incorrecto",
-                    "Uso correcto:",
-                    "/account usuario,contraseña",
-                    "Ejemplo: /account miUsuario,miPass123"
-                ])
-                bot.sendMessage(update.message.chat.id, error_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/account usuario,contraseña</code>', parse_mode='HTML')
             return
-            
         if '/host' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar servidor"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 cmd = str(msgText).split(' ',2)
@@ -691,30 +549,14 @@ def onmessage(update,bot:ObigramClient):
                     getUser['moodle_host'] = host
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Servidor Actualizado", [
-                        f"Host: {host}",
-                        "Configuración guardada",
-                        "Reinicia operaciones si es necesario"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
-                error_msg = format_s1_message("❌ Error en Comando", [
-                    "Formato incorrecto",
-                    "Uso correcto:",
-                    "/host url_del_moodle",
-                    "Ejemplo: /host https://mi-moodle.com"
-                ])
-                bot.sendMessage(update.message.chat.id, error_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/host url_del_moodle</code>', parse_mode='HTML')
             return
-            
         if '/repoid' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar repositorio"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 cmd = str(msgText).split(' ',2)
@@ -724,30 +566,14 @@ def onmessage(update,bot:ObigramClient):
                     getUser['moodle_repo_id'] = repoid
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Repositorio Actualizado", [
-                        f"ID Repositorio: {repoid}",
-                        "Configuración guardada",
-                        "Para próximas subidas"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
-                error_msg = format_s1_message("❌ Error en Comando", [
-                    "Formato incorrecto",
-                    "Uso correcto:",
-                    "/repoid id_del_repositorio",
-                    "Ejemplo: /repoid 5"
-                ])
-                bot.sendMessage(update.message.chat.id, error_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/repoid id_del_repositorio</code>', parse_mode='HTML')
             return
-            
         if '/tokenize_on' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar tokenización"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 getUser = user_info
@@ -755,29 +581,14 @@ def onmessage(update,bot:ObigramClient):
                     getUser['tokenize'] = 1
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Tokenización Activada", [
-                        "Tokenización: ACTIVADA",
-                        "Archivos se tokenizarán",
-                        "Configuración guardada"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
-                error_msg = format_s1_message("❌ Error", [
-                    "No se pudo activar tokenización",
-                    "Intente nuevamente",
-                    "Contacte soporte si persiste"
-                ])
-                bot.sendMessage(update.message.chat.id, error_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error activando tokenize</b>', parse_mode='HTML')
             return
-            
         if '/tokenize_off' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar tokenización"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 getUser = user_info
@@ -785,29 +596,14 @@ def onmessage(update,bot:ObigramClient):
                     getUser['tokenize'] = 0
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Tokenización Desactivada", [
-                        "Tokenización: DESACTIVADA",
-                        "Archivos no se tokenizarán",
-                        "Configuración guardada"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
-                error_msg = format_s1_message("❌ Error", [
-                    "No se pudo desactivar tokenización",
-                    "Intente nuevamente",
-                    "Contacte soporte si persiste"
-                ])
-                bot.sendMessage(update.message.chat.id, error_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error desactivando tokenize</b>', parse_mode='HTML')
             return
-            
         if '/cloud' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar tipo de nube"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 cmd = str(msgText).split(' ',2)
@@ -817,30 +613,14 @@ def onmessage(update,bot:ObigramClient):
                     getUser['cloudtype'] = repoid
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Tipo de Nube Actualizado", [
-                        f"Tipo: {repoid}",
-                        "Configuración guardada",
-                        "Reinicia operaciones si es necesario"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
-                error_msg = format_s1_message("❌ Error en Comando", [
-                    "Formato incorrecto",
-                    "Uso correcto:",
-                    "/cloud (moodle o cloud)",
-                    "Ejemplo: /cloud moodle"
-                ])
-                bot.sendMessage(update.message.chat.id, error_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/cloud (moodle o cloud)</code>', parse_mode='HTML')
             return
-            
         if '/uptype' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar tipo de subida"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 cmd = str(msgText).split(' ',2)
@@ -850,30 +630,14 @@ def onmessage(update,bot:ObigramClient):
                     getUser['uploadtype'] = type
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Tipo de Subida Actualizado", [
-                        f"Tipo: {type}",
-                        "Configuración guardada",
-                        "Para próximas subidas"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
-                error_msg = format_s1_message("❌ Error en Comando", [
-                    "Formato incorrecto",
-                    "Uso correcto:",
-                    "/uptype (evidence, draft, blog, calendario)",
-                    "Ejemplo: /uptype evidence"
-                ])
-                bot.sendMessage(update.message.chat.id, error_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/uptype (evidence, draft, blog)</code>', parse_mode='HTML')
             return
-            
         if '/proxy' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar proxy"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 cmd = str(msgText).split(' ',2)
@@ -883,33 +647,17 @@ def onmessage(update,bot:ObigramClient):
                     getUser['proxy'] = proxy
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Proxy Actualizado", [
-                        f"Proxy: {proxy}",
-                        "Configuración guardada",
-                        "Para próximas conexiones"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
                 if user_info:
                     user_info['proxy'] = ''
-                    jdb.save_data_user(username,user_info)
-                    jdb.save()
-                    success_msg = format_s1_message("✅ Proxy Eliminado", [
-                        "Proxy: ELIMINADO",
-                        "Configuración guardada",
-                        "Conexiones sin proxy"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,user_info,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             return
-            
         if '/dir' in msgText:
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para cambiar directorio"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             try:
                 cmd = str(msgText).split(' ',2)
@@ -919,22 +667,11 @@ def onmessage(update,bot:ObigramClient):
                     getUser['dir'] = repoid + '/'
                     jdb.save_data_user(username,getUser)
                     jdb.save()
-                    success_msg = format_s1_message("✅ Directorio Actualizado", [
-                        f"Directorio: {repoid}/",
-                        "Configuración guardada",
-                        "Para próximas subidas"
-                    ])
-                    bot.sendMessage(update.message.chat.id, success_msg)
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
             except:
-                error_msg = format_s1_message("❌ Error en Comando", [
-                    "Formato incorrecto",
-                    "Uso correcto:",
-                    "/dir nombre_carpeta",
-                    "Ejemplo: /dir mis_archivos"
-                ])
-                bot.sendMessage(update.message.chat.id, error_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/dir nombre_carpeta</code>', parse_mode='HTML')
             return
-            
         if '/cancel_' in msgText:
             try:
                 cmd = str(msgText).split('_',2)
@@ -943,54 +680,33 @@ def onmessage(update,bot:ObigramClient):
                 msg = tcancel.getStore('msg')
                 tcancel.store('stop',True)
                 time.sleep(3)
-                cancel_msg = format_s1_message("❌ Tarea Cancelada", [
-                    "Proceso detenido por usuario",
-                    "Operación interrumpida",
-                    "Puede iniciar nueva tarea"
-                ])
-                bot.editMessageText(msg, cancel_msg)
+                bot.editMessageText(msg,'<b>❌ Tarea Cancelada</b>', parse_mode='HTML')
             except Exception as ex:
                 print(str(ex))
             return
 
-        initial_msg = format_s1_message("⏳ Procesando", [
-            "Analizando solicitud...",
-            "Preparando sistema",
-            "Iniciando proceso"
-        ])
-        message = bot.sendMessage(update.message.chat.id, initial_msg)
+        message = bot.sendMessage(update.message.chat.id,'<b>⏳ Procesando...</b>', parse_mode='HTML')
 
         thread.store('msg',message)
 
         if '/start' in msgText:
-            welcome_text = """╭━━━━❰🤖 Bot de Moodle❱━➣
-┣⪼ 🚀 Subidas a Moodle  
-┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
-┣⪼ ⏱️ Enlaces: 8-30 minutos (en algunos casos hasta 30 minutos)
-┣⪼ 
-┣⪼ 📤 Envía cualquier enlace HTTP/HTTPS
-┣⪼ para comenzar a subir archivos
-╰━━━━━━━━━━━━━━━➣"""
+            # BIENVENIDA CON ESTILO S1
+            welcome_text = format_s1_message("🤖 Bot de Moodle", [
+                "🚀 Subidas a Moodle",
+                "👨‍💻 Desarrollado por: @Eliel_21",
+                "⏱️ Enlaces: 8-30 minutos (en algunos casos hasta 30 minutos)",
+                "",
+                "📤 Envía cualquier enlace HTTP/HTTPS",
+                "para comenzar a subir archivos",
+                "",
+                "📚 Usa /tutorial para guía completa"
+            ])
             
             bot.editMessageText(message, welcome_text)
-            
         elif '/files' == msgText and user_info['cloudtype']=='moodle':
              if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para ver archivos"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
-             
-             files_msg = format_s1_message("📁 Buscando Archivos", [
-                 "Conectando con Moodle...",
-                 "Obteniendo lista de archivos",
-                 "⏳ Espere por favor"
-             ])
-             bot.editMessageText(message, files_msg)
-             
              proxy = ProxyCloud.parse(user_info['proxy'])
              client = MoodleClient(user_info['moodle_user'],
                                    user_info['moodle_password'],
@@ -1000,39 +716,14 @@ def onmessage(update,bot:ObigramClient):
              if loged:
                  files = client.getEvidences()
                  filesInfo = infos.createFilesMsg(files)
-                 # Convertir a formato S1 si es largo
-                 if len(filesInfo.split('\n')) > 3:
-                     files_lines = filesInfo.split('\n')
-                     files_msg = format_s1_message("📁 Archivos Encontrados", files_lines[:15])  # Máximo 15 líneas
-                     bot.editMessageText(message, files_msg, parse_mode='HTML')
-                 else:
-                     bot.editMessageText(message, filesInfo, parse_mode='HTML')
+                 bot.editMessageText(message,filesInfo, parse_mode='HTML')
                  client.logout()
              else:
-                error_msg = format_s1_message("❌ Error de Conexión", [
-                    "No se pudo conectar a Moodle",
-                    "Verifique su cuenta y servidor",
-                    f"Servidor: {client.path}"
-                ])
-                bot.editMessageText(message, error_msg)
-                
+                bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')
         elif '/txt_' in msgText and user_info['cloudtype']=='moodle':
              if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para generar TXT"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
-             
-             txt_msg = format_s1_message("📄 Generando TXT", [
-                 "Preparando archivo de enlaces...",
-                 "Obteniendo información",
-                 "⏳ Procesando"
-             ])
-             bot.editMessageText(message, txt_msg)
-             
              findex = str(msgText).split('_')[1]
              findex = int(findex)
              proxy = ProxyCloud.parse(user_info['proxy'])
@@ -1047,38 +738,14 @@ def onmessage(update,bot:ObigramClient):
                  txtname = evindex['name']+'.txt'
                  sendTxt(txtname,evindex['files'],update,bot)
                  client.logout()
-                 success_msg = format_s1_message("✅ TXT Generado", [
-                     f"Archivo: {txtname}",
-                     "Enlaces compilados correctamente",
-                     "Descarga disponible"
-                 ])
-                 bot.editMessageText(message, success_msg)
+                 bot.editMessageText(message,'<b>📄 Archivo TXT generado:</b>', parse_mode='HTML')
              else:
-                error_msg = format_s1_message("❌ Error de Conexión", [
-                    "No se pudo conectar a Moodle",
-                    "Verifique su cuenta y servidor",
-                    f"Servidor: {client.path}"
-                ])
-                bot.editMessageText(message, error_msg)
+                bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')
              pass
-             
         elif '/del_' in msgText and user_info['cloudtype']=='moodle':
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para eliminar archivos"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
-                
-            delete_msg = format_s1_message("🗑️ Eliminando", [
-                "Preparando eliminación...",
-                "Conectando con Moodle",
-                "⏳ Procesando"
-            ])
-            bot.editMessageText(message, delete_msg)
-            
             findex = int(str(msgText).split('_')[1])
             proxy = ProxyCloud.parse(user_info['proxy'])
             client = MoodleClient(user_info['moodle_user'],
@@ -1091,37 +758,13 @@ def onmessage(update,bot:ObigramClient):
                 evfile = client.getEvidences()[findex]
                 client.deleteEvidence(evfile)
                 client.logout()
-                success_msg = format_s1_message("✅ Archivo Eliminado", [
-                    "Eliminación completada",
-                    "Archivo removido de Moodle",
-                    "Operación exitosa"
-                ])
-                bot.editMessageText(message, success_msg)
+                bot.editMessageText(message,'<b>🗑️ Archivo eliminado</b>', parse_mode='HTML')
             else:
-                error_msg = format_s1_message("❌ Error de Conexión", [
-                    "No se pudo conectar a Moodle",
-                    "Verifique su cuenta y servidor",
-                    f"Servidor: {client.path}"
-                ])
-                bot.editMessageText(message, error_msg)
-                
+                bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')
         elif '/delall' in msgText and user_info['cloudtype']=='moodle':
             if not isadmin:
-                no_permission_msg = format_s1_message("❌ Comando Restringido", [
-                    "Solo disponible para administradores",
-                    "Contacta al administrador del bot",
-                    "Para eliminar archivos"
-                ])
-                bot.sendMessage(update.message.chat.id, no_permission_msg)
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
-                
-            delete_all_msg = format_s1_message("🗑️ Eliminando Todo", [
-                "Preparando eliminación total...",
-                "Conectando con Moodle",
-                "⏳ Esto puede tomar tiempo"
-            ])
-            bot.editMessageText(message, delete_all_msg)
-            
             proxy = ProxyCloud.parse(user_info['proxy'])
             client = MoodleClient(user_info['moodle_user'],
                                    user_info['moodle_password'],
@@ -1132,31 +775,16 @@ def onmessage(update,bot:ObigramClient):
             if loged:
                 evfiles = client.getEvidences()
                 for item in evfiles:
-                    client.deleteEvidence(item)
+                	client.deleteEvidence(item)
                 client.logout()
-                success_msg = format_s1_message("✅ Todos Eliminados", [
-                    f"Eliminados: {len(evfiles)} archivos",
-                    "Limpieza completada",
-                    "Todos los archivos removidos"
-                ])
-                bot.editMessageText(message, success_msg)
+                bot.editMessageText(message,'<b>🗑️ Todos los archivos eliminados</b>', parse_mode='HTML')
             else:
-                error_msg = format_s1_message("❌ Error de Conexión", [
-                    "No se pudo conectar a Moodle",
-                    "Verifique su cuenta y servidor",
-                    f"Servidor: {client.path}"
-                ])
-                bot.editMessageText(message, error_msg)       
+                bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')       
         elif 'http' in msgText:
             url = msgText
             ddl(update,bot,message,url,file_name='',thread=thread,jdb=jdb)
         else:
-            error_msg = format_s1_message("❌ Error", [
-                "No se pudo procesar el mensaje",
-                "Comando no reconocido",
-                "Use /start para ver opciones disponibles"
-            ])
-            bot.editMessageText(message, error_msg)
+            bot.editMessageText(message,'<b>❌ No se pudo procesar el mensaje</b>', parse_mode='HTML')
     except Exception as ex:
            print(str(ex))
 
