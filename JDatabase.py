@@ -34,7 +34,7 @@ class JsonDatabase(object):
                      'moodle_user': 'eliel21',
                      'moodle_password': 'ElielThali15212115.',
                      'isadmin': 0,
-                     'zips': 99,
+                     'zips': 100,
                      'uploadtype':'draft',
                      'proxy':'',
                      'tokenize':0}
@@ -47,7 +47,7 @@ class JsonDatabase(object):
                      'moodle_user': 'eliel21',
                      'moodle_password': 'ElielThali15212115.',
                      'isadmin': 1,
-                     'zips': 99,
+                     'zips': 100,
                      'uploadtype':'draft',
                      'proxy':'',
                      'tokenize':0}
@@ -83,6 +83,7 @@ class JsonDatabase(object):
             data = json.loads(str(tokens[1]).replace("'", '"'))
 
             self.items[user] = data
+
 
 
 
