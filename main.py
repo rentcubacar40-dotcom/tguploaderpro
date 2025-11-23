@@ -868,7 +868,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
 ┣⪼ ⏱️ Enlaces: 8-30 minutos
 ┣⪼ 📤 Envía enlaces HTTP/HTTPS
-┣⪼ 
+
 ┣⪼ 📝 COMANDOS ADMIN:
 ┣⪼ /myuser - Mi configuración
 ┣⪼ /zips - Tamaño de partes
@@ -893,7 +893,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
 ┣⪼ ⏱️ Enlaces: 8-30 minutos
 ┣⪼ 📤 Envía enlaces HTTP/HTTPS
-┣⪼ 
+
 ┣⪼ 📝 COMANDOS DISPONIBLES:
 ┣⪼ /start - Información del bot
 ┣⪼ /tutorial - Guía completa
