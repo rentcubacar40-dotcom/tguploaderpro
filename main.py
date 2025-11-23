@@ -60,41 +60,34 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
         thread = args[2]
         if thread.getStore('stop'):
             downloader.stop()
-        
-        # Calcular porcentaje y crear barra de progreso S1
-        if totalBits > 0:
-            percentage = (currentBits / totalBits) * 100
-            progress_bar = create_progress_bar(percentage)
-            total_mb = totalBits / (1024 * 1024)
-            current_mb = currentBits / (1024 * 1024)
-            speed_mb = speed / (1024 * 1024) if speed > 0 else 0
+            return
             
-            # Calcular ETA con formato mejorado (minutos:segundos)
-            if speed > 0:
-                remaining_bits = totalBits - currentBits
-                eta_seconds = remaining_bits / speed
-                eta_formatted = format_time(eta_seconds)
-            else:
-                eta_formatted = "00:00"
-            
-            # Mensaje con estilo S1 corregido CON COMANDO DE CANCELAR
-            downloadingInfo = format_s1_message("📥 Descargando", [
-                f"[{progress_bar}]",
-                f"✅ Progreso: {percentage:.1f}%",
-                f"📦 Tamaño: {current_mb:.2f}/{total_mb:.2f} MB",
-                f"⚡ Velocidad: {speed_mb:.2f} MB/s",
-                f"⏳ Tiempo: {eta_formatted}",
-                f"🚫 Cancelar: /cancel_{thread.cancel_id}"
-            ])
+        downloadingInfo = ''
+        if totalBits == 0:
+            percentage = 0
         else:
-            downloadingInfo = format_s1_message("📥 Descargando", [
-                "[⬡⬡⬡⬡⬡⬡⬡⬡⬡⬡]",
-                "✅ Progreso: 0%",
-                "📦 Tamaño: Calculando...",
-                "⚡ Velocidad: 0.00 MB/s",
-                "⏳ Tiempo: 00:00",
-                f"🚫 Cancelar: /cancel_{thread.cancel_id}"
-            ])
+            percentage = (currentBits / totalBits) * 100
+        
+        progress_bar = create_progress_bar(percentage)
+        total_mb = totalBits / (1024 * 1024)
+        current_mb = currentBits / (1024 * 1024)
+        speed_mb = speed / (1024 * 1024) if speed > 0 else 0
+        
+        if speed > 0 and totalBits > 0:
+            remaining_bits = totalBits - currentBits
+            eta_seconds = remaining_bits / speed
+            eta_formatted = format_time(eta_seconds)
+        else:
+            eta_formatted = "00:00"
+        
+        downloadingInfo = format_s1_message("📥 Descargando", [
+            f"[{progress_bar}]",
+            f"✅ Progreso: {percentage:.1f}%",
+            f"📦 Tamaño: {current_mb:.2f}/{total_mb:.2f} MB",
+            f"⚡ Velocidad: {speed_mb:.2f} MB/s",
+            f"⏳ Tiempo: {eta_formatted}",
+            f"🚫 Cancelar: /cancel_{thread.cancel_id}"
+        ])
             
         bot.editMessageText(message, downloadingInfo)
     except Exception as ex: 
@@ -107,57 +100,45 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
         message = args[1]
         originalfile = args[2]
         thread = args[3]
-        part_info = args[4] if len(args) > 4 else None  # Nueva información de partes
+        if thread.getStore('stop'):
+            return
+            
+        part_info = args[4] if len(args) > 4 else None
         
-        # Calcular porcentaje y crear barra de progreso S1
-        if totalBits > 0:
-            percentage = (currentBits / totalBits) * 100
-            progress_bar = create_progress_bar(percentage)
-            total_mb = totalBits / (1024 * 1024)
-            current_mb = currentBits / (1024 * 1024)
-            speed_mb = speed / (1024 * 1024) if speed > 0 else 0
-            
-            # Calcular ETA con formato mejorado (minutos:segundos)
-            if speed > 0:
-                remaining_bits = totalBits - currentBits
-                eta_seconds = remaining_bits / speed
-                eta_formatted = format_time(eta_seconds)
-            else:
-                eta_formatted = "00:00"
-            
-            # Mostrar información de partes si está disponible
-            file_display = filename
-            if part_info:
-                current_part, total_parts, original_name = part_info
-                file_display = f"{original_name} (Parte {current_part}/{total_parts})"
-            elif originalfile:
-                file_display = originalfile
-            
-            # Mensaje con estilo S1 corregido CON COMANDO DE CANCELAR
-            uploadingInfo = format_s1_message("📤 Subiendo", [
-                f"[{progress_bar}]",
-                f"✅ Progreso: {percentage:.1f}%",
-                f"📦 Tamaño: {current_mb:.2f}/{total_mb:.2f} MB",
-                f"⚡ Velocidad: {speed_mb:.2f} MB/s",
-                f"⏳ Tiempo: {eta_formatted}",
-                f"📄 Archivo: {file_display}",
-                f"🚫 Cancelar: /cancel_{thread.cancel_id}"
-            ])
+        uploadingInfo = ''
+        if totalBits == 0:
+            percentage = 0
         else:
-            file_display = filename
-            if part_info:
-                current_part, total_parts, original_name = part_info
-                file_display = f"{original_name} (Parte {current_part}/{total_parts})"
+            percentage = (currentBits / totalBits) * 100
             
-            uploadingInfo = format_s1_message("📤 Subiendo", [
-                "[⬡⬡⬡⬡⬡⬡⬡⬡⬡⬡]",
-                "✅ Progreso: 0%",
-                "📦 Tamaño: Calculando...",
-                "⚡ Velocidad: 0.00 MB/s",
-                "⏳ Tiempo: 00:00",
-                f"📄 Archivo: {file_display}",
-                f"🚫 Cancelar: /cancel_{thread.cancel_id}"
-            ])
+        progress_bar = create_progress_bar(percentage)
+        total_mb = totalBits / (1024 * 1024)
+        current_mb = currentBits / (1024 * 1024)
+        speed_mb = speed / (1024 * 1024) if speed > 0 else 0
+        
+        if speed > 0 and totalBits > 0:
+            remaining_bits = totalBits - currentBits
+            eta_seconds = remaining_bits / speed
+            eta_formatted = format_time(eta_seconds)
+        else:
+            eta_formatted = "00:00"
+        
+        file_display = filename
+        if part_info:
+            current_part, total_parts, original_name = part_info
+            file_display = f"{original_name} (Parte {current_part}/{total_parts})"
+        elif originalfile:
+            file_display = originalfile
+        
+        uploadingInfo = format_s1_message("📤 Subiendo", [
+            f"[{progress_bar}]",
+            f"✅ Progreso: {percentage:.1f}%",
+            f"📦 Tamaño: {current_mb:.2f}/{total_mb:.2f} MB",
+            f"⚡ Velocidad: {speed_mb:.2f} MB/s",
+            f"⏳ Tiempo: {eta_formatted}",
+            f"📄 Archivo: {file_display}",
+            f"🚫 Cancelar: /cancel_{thread.cancel_id}"
+        ])
             
         bot.editMessageText(message, uploadingInfo)
     except Exception as ex: 
@@ -172,7 +153,6 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
         user_info = jdb.get_user(update.message.sender.username)
         cloudtype = user_info['cloudtype']
         proxy = ProxyCloud.parse(user_info['proxy'])
-        
         if cloudtype == 'moodle':
             client = MoodleClient(user_info['moodle_user'],
                                   user_info['moodle_password'],
@@ -181,72 +161,79 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                                   proxy=proxy)
             loged = client.login()
             itererr = 0
-            if loged:
-                if user_info['uploadtype'] == 'evidence':
-                    evidences = client.getEvidences()
-                    evidname = str(filename).split('.')[0]
-                    for evid in evidences:
-                        if evid['name'] == evidname:
-                            evidence = evid
-                            break
-                    if evidence is None:
-                        evidence = client.createEvidence(evidname)
-
-                originalfile = ''
-                total_parts = len(files)
-                draftlist = []
+            if not loged:
+                bot.editMessageText(message,'<b>❌ Error en la plataforma</b>', parse_mode='HTML')
+                return None
                 
-                for i, f in enumerate(files, 1):
-                    f_size = get_file_size(f)
-                    resp = None
-                    iter = 0
-                    tokenize = False
-                    
-                    if user_info['tokenize']!=0:
-                       tokenize = True
-                    
-                    # Información de partes para archivos múltiples
-                    part_info = None
-                    if total_parts > 1:
-                        part_info = (i, total_parts, filename)
-                    
-                    while resp is None:
-                          if user_info['uploadtype'] == 'evidence':
-                             fileid,resp = client.upload_file(f,evidence,fileid,
+            if user_info['uploadtype'] == 'evidence':
+                evidences = client.getEvidences()
+                evidname = str(filename).split('.')[0]
+                for evid in evidences:
+                    if evid['name'] == evidname:
+                        evidence = evid
+                        break
+                if evidence is None:
+                    evidence = client.createEvidence(evidname)
+
+            originalfile = ''
+            total_parts = len(files)
+            draftlist = []
+            
+            for i, f in enumerate(files, 1):
+                f_size = get_file_size(f)
+                resp = None
+                iter = 0
+                tokenize = False
+                
+                if user_info['tokenize']!=0:
+                   tokenize = True
+                   
+                part_info = None
+                if total_parts > 1:
+                    part_info = (i, total_parts, filename)
+                
+                while resp is None:
+                    if thread.getStore('stop'):
+                        break
+                    if user_info['uploadtype'] == 'evidence':
+                        fileid,resp = client.upload_file(f,evidence,fileid,
+                                                        progressfunc=uploadFile,
+                                                        args=(bot,message,filename,thread,part_info),
+                                                        tokenize=tokenize)
+                        draftlist.append(resp)
+                    if user_info['uploadtype'] == 'draft':
+                        fileid,resp = client.upload_file_draft(f,
+                                                              progressfunc=uploadFile,
+                                                              args=(bot,message,filename,thread,part_info),
+                                                              tokenize=tokenize)
+                        draftlist.append(resp)
+                    if user_info['uploadtype'] == 'blog':
+                        fileid,resp = client.upload_file_blog(f,
                                                              progressfunc=uploadFile,
                                                              args=(bot,message,filename,thread,part_info),
                                                              tokenize=tokenize)
-                             draftlist.append(resp)
-                          if user_info['uploadtype'] == 'draft':
-                             fileid,resp = client.upload_file_draft(f,
-                                                                   progressfunc=uploadFile,
-                                                                   args=(bot,message,filename,thread,part_info),
-                                                                   tokenize=tokenize)
-                             draftlist.append(resp)
-                          if user_info['uploadtype'] == 'blog':
-                             fileid,resp = client.upload_file_blog(f,
-                                                                  progressfunc=uploadFile,
-                                                                  args=(bot,message,filename,thread,part_info),
-                                                                   tokenize=tokenize)
-                             draftlist.append(resp)
-                          if user_info['uploadtype'] == 'calendario':
-                             fileid,resp = client.upload_file_calendar(f,
-                                                                      progressfunc=uploadFile,
-                                                                      args=(bot,message,filename,thread,part_info),
-                                                                      tokenize=tokenize)
-                             draftlist.append(resp)
-                          iter += 1
-                          if iter>=10:
-                              break
-                    os.unlink(f)
-                    
-                if user_info['uploadtype'] == 'evidence':
-                    try:
-                        client.saveEvidence(evidence)
-                    except:pass
-                return draftlist
-            else:
-                bot.editMessageText(message,'<b>❌ Error en la plataforma</b>', parse_mode='HTML')
+                        draftlist.append(resp)
+                    if user_info['uploadtype'] == 'calendario':
+                        fileid,resp = client.upload_file_calendar(f,
+                                                                 progressfunc=uploadFile,
+                                                                 args=(bot,message,filename,thread,part_info),
+                                                                 tokenize=tokenize)
+                        draftlist.append(resp)
+                    iter += 1
+                    if iter>=10:
+                        break
+                if thread.getStore('stop'):
+                    break
+                os.unlink(f)
+                
+            if thread.getStore('stop'):
+                return None
+                
+            if user_info['uploadtype'] == 'evidence':
+                try:
+                    client.saveEvidence(evidence)
+                except:pass
+            return draftlist
         elif cloudtype == 'cloud':
             tokenize = False
             if user_info['tokenize']!=0:
@@ -258,160 +245,178 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
             remotepath = user_info['dir']
             client = NexCloudClient.NexCloudClient(user,passw,host,proxy=proxy)
             loged = client.login()
-            if loged:
-               total_parts = len(files)
-               filesdata = []
-               for i, f in enumerate(files, 1):
-                   # Información de partes para archivos múltiples
-                   part_info = None
-                   if total_parts > 1:
-                       part_info = (i, total_parts, filename)
-                       
-                   data = client.upload_file(f,path=remotepath,
-                                            progressfunc=uploadFile,
-                                            args=(bot,message,filename,thread,part_info),
-                                            tokenize=tokenize)
-                   filesdata.append(data)
-                   os.unlink(f)
-               return filesdata
+            if not loged:
+                bot.editMessageText(message,'<b>❌ Error en la nube</b>', parse_mode='HTML')
+                return None
+                
+            total_parts = len(files)
+            filesdata = []
+            for i, f in enumerate(files, 1):
+                if thread.getStore('stop'):
+                    break
+                    
+                part_info = None
+                if total_parts > 1:
+                    part_info = (i, total_parts, filename)
+                    
+                data = client.upload_file(f,path=remotepath,
+                                        progressfunc=uploadFile,
+                                        args=(bot,message,filename,thread,part_info),
+                                        tokenize=tokenize)
+                filesdata.append(data)
+                os.unlink(f)
+                
+            if thread.getStore('stop'):
+                return None
+                
+            return filesdata
         return None
     except Exception as ex:
         bot.editMessageText(message,f'<b>❌ Error</b>\n<code>{str(ex)}</code>', parse_mode='HTML')
         return None
 
 def processFile(update,bot,message,file,thread=None,jdb=None):
-    file_size = get_file_size(file)
-    getUser = jdb.get_user(update.message.sender.username)
-    max_file_size = 1024 * 1024 * getUser['zips']
-    file_upload_count = 0
-    client = None
-    findex = 0
-    if file_size > max_file_size:
-        compresingInfo = infos.createCompresing(file,file_size,max_file_size)
-        bot.editMessageText(message,compresingInfo)
-        zipname = str(file).split('.')[0] + createID()
-        mult_file = zipfile.MultiFile(zipname,max_file_size)
-        zip = zipfile.ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
-        zip.write(file)
-        zip.close()
-        mult_file.close()
-        client = processUploadFiles(file,file_size,mult_file.files,update,bot,message,jdb=jdb)
-        try:
-            os.unlink(file)
-        except:pass
-        file_upload_count = len(mult_file.files)
-    else:
-        client = processUploadFiles(file,file_size,[file],update,bot,message,jdb=jdb)
-        file_upload_count = 1
+    try:
+        file_size = get_file_size(file)
+        getUser = jdb.get_user(update.message.sender.username)
+        max_file_size = 1024 * 1024 * getUser['zips']
+        file_upload_count = 0
+        client = None
+        findex = 0
         
-    bot.editMessageText(message,'<b>📄 Preparando enlaces...</b>', parse_mode='HTML')
-    evidname = ''
-    files = []
-    if client:
-        if getUser['cloudtype'] == 'moodle':
-            if getUser['uploadtype'] == 'evidence':
-                try:
-                    evidname = str(file).split('.')[0]
-                    txtname = evidname + '.txt'
-                    evidences = client.getEvidences()
-                    for ev in evidences:
-                        if ev['name'] == evidname:
-                           files = ev['files']
-                           break
-                        if len(ev['files'])>0:
-                           findex+=1
-                    client.logout()
-                except:pass
-            if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
-               for draft in client:
-                   files.append({'name':draft['file'],'directurl':draft['url']})
-        else:
-            for data in client:
-                files.append({'name':data['name'],'directurl':data['url']})
-
-        # MODIFICAR ENLACES para que tengan /webservice
-        for i in range(len(files)):
-            url = files[i]['directurl']
-            if 'aulacened.uci.cu' in url:
-                files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
-
-        bot.deleteMessage(message.chat.id,message.message_id)
-        
-        # MENSAJE FINAL CON ESTILO S1
-        original_filename = file.split('/')[-1] if '/' in file else file
-        total_parts = file_upload_count
-        
-        if total_parts > 1:
-            finish_title = f"✅ Subida Completada - {total_parts} Partes"
-        else:
-            finish_title = "✅ Subida Completada"
+        if thread.getStore('stop'):
+            try:
+                os.unlink(file)
+            except:pass
+            return
             
-        finishInfo = format_s1_message(finish_title, [
-            f"📄 Archivo: {original_filename}",
-            f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-            f"🔗 Enlaces generados: {len(files)}",
-            f"⏱️ Duración enlaces: 8-30 minutos",
-            f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
-        ])
-        
-        # Enviar mensaje final S1
-        bot.sendMessage(message.chat.id, finishInfo)
-        
-        # ENVIAR ENLACES (MANTENIENDO LA FUNCIONALIDAD ORIGINAL)
-        if len(files) > 0:
-            filesInfo = infos.createFileMsg(file,files)
-            bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
-            txtname = str(file).split('/')[-1].split('.')[0] + '.txt'
-            sendTxt(txtname,files,update,bot)
+        if file_size > max_file_size:
+            compresingInfo = infos.createCompresing(file,file_size,max_file_size)
+            bot.editMessageText(message,compresingInfo)
+            zipname = str(file).split('.')[0] + createID()
+            mult_file = zipfile.MultiFile(zipname,max_file_size)
+            zip = zipfile.ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
+            zip.write(file)
+            zip.close()
+            mult_file.close()
+            client = processUploadFiles(file,file_size,mult_file.files,update,bot,message,thread=thread,jdb=jdb)
+            try:
+                os.unlink(file)
+            except:pass
+            file_upload_count = len(mult_file.files)
+        else:
+            client = processUploadFiles(file,file_size,[file],update,bot,message,thread=thread,jdb=jdb)
+            file_upload_count = 1
+            
+        if thread.getStore('stop'):
+            return
+            
+        bot.editMessageText(message,'<b>📄 Preparando enlaces...</b>', parse_mode='HTML')
+        evidname = ''
+        files = []
+        if client:
+            if getUser['cloudtype'] == 'moodle':
+                if getUser['uploadtype'] == 'evidence':
+                    try:
+                        evidname = str(file).split('.')[0]
+                        txtname = evidname + '.txt'
+                        evidences = client.getEvidences()
+                        for ev in evidences:
+                            if ev['name'] == evidname:
+                               files = ev['files']
+                               break
+                            if len(ev['files'])>0:
+                               findex+=1
+                        client.logout()
+                    except:pass
+                if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
+                   for draft in client:
+                       files.append({'name':draft['file'],'directurl':draft['url']})
+            else:
+                for data in client:
+                    files.append({'name':data['name'],'directurl':data['url']})
+
+            for i in range(len(files)):
+                url = files[i]['directurl']
+                if 'aulacened.uci.cu' in url:
+                    files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
+
+            bot.deleteMessage(message.chat.id,message.message_id)
+            
+            original_filename = file.split('/')[-1] if '/' in file else file
+            total_parts = file_upload_count
+            
+            if total_parts > 1:
+                finish_title = f"✅ Subida Completada - {total_parts} Partes"
+            else:
+                finish_title = "✅ Subida Completada"
+                
+            finishInfo = format_s1_message(finish_title, [
+                f"📄 Archivo: {original_filename}",
+                f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                f"🔗 Enlaces generados: {len(files)}",
+                f"⏱️ Duración enlaces: 8-30 minutos",
+                f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
+            ])
+            
+            bot.sendMessage(message.chat.id, finishInfo)
+            
+            if len(files) > 0:
+                filesInfo = infos.createFileMsg(file,files)
+                bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
+                txtname = str(file).split('/')[-1].split('.')[0] + '.txt'
+                sendTxt(txtname,files,update,bot)
+    except Exception as ex:
+        print(f"Error en processFile: {ex}")
 
 def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
-    downloader = Downloader()
-    # Asignar ID de cancelación al thread
-    thread.cancel_id = createID()
-    bot.threads[thread.cancel_id] = thread
-    
-    file = downloader.download_url(url,progressfunc=downloadFile,args=(bot,message,thread))
-    if not downloader.stoping:
-        if file:
-            processFile(update,bot,message,file,jdb=jdb)
-        else:
-            megadl(update,bot,message,url,file_name,thread,jdb=jdb)
-    
-    # Limpiar el thread de cancelación después de completar
-    if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
-        del bot.threads[thread.cancel_id]
+    try:
+        downloader = Downloader()
+        thread.cancel_id = createID()
+        bot.threads[thread.cancel_id] = thread
+        
+        file = downloader.download_url(url,progressfunc=downloadFile,args=(bot,message,thread))
+        if not downloader.stoping:
+            if file:
+                processFile(update,bot,message,file,thread=thread,jdb=jdb)
+            else:
+                megadl(update,bot,message,url,file_name,thread,jdb=jdb)
+        
+        if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
+            del bot.threads[thread.cancel_id]
+    except Exception as ex:
+        print(f"Error en ddl: {ex}")
 
 def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
-    # Asignar ID de cancelación al thread
-    thread.cancel_id = createID()
-    bot.threads[thread.cancel_id] = thread
-    
-    megadl = megacli.mega.Mega({'verbose': True})
-    megadl.login()
     try:
-        info = megadl.get_public_url_info(megaurl)
-        file_name = info['name']
-        megadl.download_url(megaurl,dest_path=None,dest_filename=file_name,progressfunc=downloadFile,args=(bot,message,thread))
-        if not megadl.stoping:
-            processFile(update,bot,message,file_name,thread=thread)
-    except:
-        files = megaf.get_files_from_folder(megaurl)
-        for f in files:
-            file_name = f['name']
-            megadl._download_file(f['handle'],f['key'],dest_path=None,dest_filename=file_name,is_public=False,progressfunc=downloadFile,args=(bot,message,thread),f_data=f['data'])
+        thread.cancel_id = createID()
+        bot.threads[thread.cancel_id] = thread
+        
+        megadl = megacli.mega.Mega({'verbose': True})
+        megadl.login()
+        try:
+            info = megadl.get_public_url_info(megaurl)
+            file_name = info['name']
+            megadl.download_url(megaurl,dest_path=None,dest_filename=file_name,progressfunc=downloadFile,args=(bot,message,thread))
             if not megadl.stoping:
                 processFile(update,bot,message,file_name,thread=thread)
-        pass
-    
-    # Limpiar el thread de cancelación después de completar
-    if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
-        del bot.threads[thread.cancel_id]
+        except:
+            files = megaf.get_files_from_folder(megaurl)
+            for f in files:
+                file_name = f['name']
+                megadl._download_file(f['handle'],f['key'],dest_path=None,dest_filename=file_name,is_public=False,progressfunc=downloadFile,args=(bot,message,thread),f_data=f['data'])
+                if not megadl.stoping:
+                    processFile(update,bot,message,file_name,thread=thread)
+            pass
+        
+        if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
+            del bot.threads[thread.cancel_id]
+    except Exception as ex:
+        print(f"Error en megadl: {ex}")
     pass
 
 def sendTxt(name,files,update,bot):
-    """Envía archivo txt con enlaces y thumbnail personalizado - OPCIÓN 1"""
     try:
-        # Crear el archivo txt con formato mejorado
         with open(name, 'w', encoding='utf-8') as txt:
             txt.write("📄 ENLACES DE DESCARGA\n")
             txt.write("=" * 30 + "\n\n")
@@ -420,7 +425,6 @@ def sendTxt(name,files,update,bot):
                 txt.write(f"🔗 {f['directurl']}\n")
                 txt.write("-" * 40 + "\n")
         
-        # Mensaje informativo como caption
         info_msg = f"""<b>📄 Archivo de enlaces generado</b>
 
 📎 <b>Nombre:</b> <code>{name}</code>
@@ -429,33 +433,24 @@ def sendTxt(name,files,update,bot):
 
 ⬇️ <b>Descarga el archivo TXT abajo</b>"""
         
-        # Intentar enviar con thumbnail personalizado
         try:
-            # Verificar si existe el thumbnail
             if os.path.exists('31F5FAAF-A68A-4A49-ADDE-EA4A20CE9E58.jpg'):
-                # Enviar la foto primero
                 bot.sendPhoto(update.message.chat.id,
                             open('31F5FAAF-A68A-4A49-ADDE-EA4A20CE9E58.jpg', 'rb'),
                             caption=info_msg,
                             parse_mode='HTML')
-                
-                # Luego enviar el archivo TXT
                 bot.sendFile(update.message.chat.id, name, caption="📁 Archivo de enlaces")
             else:
-                # Si no hay thumbnail, enviar solo el TXT con caption
                 bot.sendFile(update.message.chat.id, name, caption=info_msg, parse_mode='HTML')
                 
         except Exception as e:
             print(f"Error enviando con thumbnail: {e}")
-            # Fallback: enviar solo el TXT
             bot.sendFile(update.message.chat.id, name, caption=info_msg, parse_mode='HTML')
         
-        # Limpiar archivo temporal
         os.unlink(name)
         
     except Exception as ex:
         print(f"Error en sendTxt: {str(ex)}")
-        # Fallback seguro
         try:
             if os.path.exists(name):
                 bot.sendFile(update.message.chat.id, name)
@@ -475,7 +470,7 @@ def onmessage(update,bot:ObigramClient):
 
         user_info = jdb.get_user(username)
 
-        if username == tl_admin_user or tl_admin_user=='*' or user_info :  # validate user
+        if username == tl_admin_user or tl_admin_user=='*' or user_info:
             if user_info is None:
                 if username == tl_admin_user:
                     jdb.create_admin(username)
@@ -485,7 +480,6 @@ def onmessage(update,bot:ObigramClient):
                 jdb.save_data_user(username, user_info)
                 jdb.save()
         else:
-            # Usuario no tiene acceso al bot
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
                            "No tienes acceso a este bot.\n\n"
@@ -500,13 +494,9 @@ def onmessage(update,bot:ObigramClient):
         except: 
             msgText = ''
 
-        # ✅ DETECTAR TIPO DE MENSAJE
         is_text = msgText != ''
-        
-        # ✅ BLOQUEAR SOLO COMANDOS DE CONFIGURACIÓN PARA USUARIOS NORMALES
         isadmin = jdb.is_admin(username)
         
-        # Si NO es admin y el mensaje es un COMANDO de configuración, bloquear
         if not isadmin and is_text and any(cmd in msgText for cmd in [
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
@@ -522,9 +512,7 @@ def onmessage(update,bot:ObigramClient):
                            parse_mode='HTML')
             return
 
-        # Si es un mensaje de texto normal (no comando, no enlace)
         if is_text and not msgText.startswith('/') and not 'http' in msgText:
-            # Mensaje simple para mensajes normales
             bot.sendMessage(update.message.chat.id,
                            "<b>🤖 Bot de Subida de Archivos</b>\n\n"
                            "📤 <b>Para subir archivos:</b> Envía un enlace HTTP/HTTPS\n\n"
@@ -532,22 +520,19 @@ def onmessage(update,bot:ObigramClient):
                            parse_mode='HTML')
             return
 
-        # COMANDO ADDUSER MEJORADO - MÚLTIPLES USUARIOS
         if '/adduser' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
                 try:
-                    # Obtener todos los usuarios después del comando
                     users_text = str(msgText).split(' ', 1)[1]
-                    # Separar por comas y limpiar espacios
                     users = [user.strip().replace('@', '') for user in users_text.split(',')]
                     
                     added_users = []
                     existing_users = []
                     
                     for user in users:
-                        if user:  # Verificar que no esté vacío
-                            if not jdb.get_user(user):  # Si el usuario no existe
+                        if user:
+                            if not jdb.get_user(user):
                                 jdb.create_user(user)
                                 added_users.append(user)
                             else:
@@ -555,7 +540,6 @@ def onmessage(update,bot:ObigramClient):
                     
                     jdb.save()
                     
-                    # Crear mensaje de respuesta con singular/plural
                     message_parts = []
                     
                     if added_users:
@@ -590,14 +574,11 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
 
-        # COMANDO BANUSER MEJORADO - MÚLTIPLES USUARIOS
         if '/banuser' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
                 try:
-                    # Obtener todos los usuarios después del comando
                     users_text = str(msgText).split(' ', 1)[1]
-                    # Separar por comas y limpiar espacios
                     users = [user.strip().replace('@', '') for user in users_text.split(',')]
                     
                     banned_users = []
@@ -605,11 +586,11 @@ def onmessage(update,bot:ObigramClient):
                     self_ban_attempt = False
                     
                     for user in users:
-                        if user:  # Verificar que no esté vacío
+                        if user:
                             if user == username:
                                 self_ban_attempt = True
                                 continue
-                            if jdb.get_user(user):  # Si el usuario existe
+                            if jdb.get_user(user):
                                 jdb.remove(user)
                                 banned_users.append(user)
                             else:
@@ -617,7 +598,6 @@ def onmessage(update,bot:ObigramClient):
                     
                     jdb.save()
                     
-                    # Crear mensaje de respuesta con singular/plural
                     message_parts = []
                     
                     if banned_users:
@@ -664,32 +644,26 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
 
-        # COMANDO PROCESS - VER ESTADÍSTICAS DE USUARIOS (SOLO ADMIN)
         if '/process' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
                 try:
-                    # Obtener todos los usuarios
                     all_users = jdb.get_all_users()
                     
-                    # Calcular estadísticas de uso
                     stats_info = "<b>📊 ESTADÍSTICAS DE USO</b>\n\n"
                     total_global_mb = 0
                     user_count = 0
                     
                     for user_data in all_users:
                         username_stat = user_data['username']
-                        if username_stat != 'db':  # Ignorar entrada de la base de datos
+                        if username_stat != 'db':
                             user_count += 1
                             
-                            # Obtener información del usuario
                             user_stat = jdb.get_user(username_stat)
                             if user_stat:
-                                # Obtener tamaño total usado (si existe en los datos del usuario)
                                 total_mb_used = user_stat.get('total_mb_used', 0)
                                 total_global_mb += total_mb_used
                                 
-                                # Formatear tamaño usado
                                 if total_mb_used >= 1024:
                                     size_display = f"{total_mb_used/1024:.2f} GB"
                                 else:
@@ -701,7 +675,6 @@ def onmessage(update,bot:ObigramClient):
                                 stats_info += f"   <b>💾 Espacio usado:</b> {size_display}\n"
                                 stats_info += f"   <b>📅 Registrado:</b> {user_stat.get('created', 'N/A')}\n\n"
                     
-                    # Estadísticas globales
                     if total_global_mb >= 1024:
                         global_display = f"{total_global_mb/1024:.2f} GB"
                     else:
@@ -721,7 +694,6 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
 
-        # COMANDO TUTORIAL - DISPONIBLE PARA TODOS
         if '/tutorial' in msgText:
             try:
                 tuto = open('tuto.txt','r', encoding='utf-8')
@@ -733,7 +705,6 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>📚 Archivo de tutorial no disponible</b>', parse_mode='HTML')
             return
 
-        # comandos de usuario (solo para administrador)
         if '/myuser' in msgText:
             if not isadmin:
                 bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
@@ -935,7 +906,6 @@ def onmessage(update,bot:ObigramClient):
         thread.store('msg',message)
 
         if '/start' in msgText:
-            # BIENVENIDA CON ESTILO S1 CORREGIDO Y FOTO
             if isadmin:
                 welcome_text = format_s1_message("🤖 Bot de Moodle - ADMIN", [
                     "🚀 Subidas a Moodle/Cloud",
@@ -974,10 +944,8 @@ def onmessage(update,bot:ObigramClient):
                     "• /tutorial - Guía completa"
                 ])
             
-            # Primero eliminar el mensaje "Procesando..."
             bot.deleteMessage(message.chat.id, message.message_id)
             
-            # Enviar la foto con el mensaje de bienvenida
             try:
                 if os.path.exists('31F5FAAF-A68A-4A49-ADDE-EA4A20CE9E58.jpg'):
                     bot.sendPhoto(
@@ -986,11 +954,9 @@ def onmessage(update,bot:ObigramClient):
                         caption=welcome_text
                     )
                 else:
-                    # Si no existe la imagen, enviar solo el texto
                     bot.sendMessage(update.message.chat.id, welcome_text)
             except Exception as e:
                 print(f"Error enviando foto de bienvenida: {e}")
-                # Fallback: enviar solo el texto
                 bot.sendMessage(update.message.chat.id, welcome_text)
         elif '/files' == msgText and user_info['cloudtype']=='moodle':
              if not isadmin:
@@ -1023,14 +989,12 @@ def onmessage(update,bot:ObigramClient):
              loged = client.login()
              if loged:
                  evidences = client.getEvidences()
-                 if 0 <= findex < len(evidences):  # ✅ Validar que el índice existe
+                 if 0 <= findex < len(evidences):
                      evindex = evidences[findex]
                      txtname = evindex['name']+'.txt'
                      
-                     # ✅ Eliminar mensaje "Procesando..." antes de enviar el TXT
                      bot.deleteMessage(message.chat.id, message.message_id)
                      
-                     # ✅ Usar la función sendTxt que ya incluye la foto (OPCIÓN 1)
                      sendTxt(txtname, evindex['files'], update, bot)
                  else:
                      bot.editMessageText(message,'<b>❌ Índice no válido</b>', parse_mode='HTML')
@@ -1085,7 +1049,6 @@ def onmessage(update,bot:ObigramClient):
            print(str(ex))
 
 def start_health_server(port):
-    """Inicia un servidor HTTP simple para health checks"""
     try:
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -1098,7 +1061,6 @@ def start_health_server(port):
                 client_socket, addr = server_socket.accept()
                 request = client_socket.recv(1024).decode('utf-8')
                 
-                # Responder con HTTP 200 OK
                 response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nBot is running!"
                 client_socket.send(response.encode('utf-8'))
                 client_socket.close()
@@ -1112,23 +1074,17 @@ def start_health_server(port):
 def main():
     bot_token = os.environ.get('bot_token')
 
-    #decomentar abajo y modificar solo si se va a poner el token del bot manual
-    #bot_token = 'BOT TOKEN'
-
     bot = ObigramClient(bot_token)
     bot.onMessage(onmessage)
     
-    # Obtener puerto de Render
     port = int(os.environ.get("PORT", 5000))
     
-    # Iniciar servidor de health check en un hilo separado
     health_thread = threading.Thread(target=start_health_server, args=(port,))
     health_thread.daemon = True
     health_thread.start()
     
     print(f"🚀 Bot starting with health check on port {port}")
     
-    # Ejecutar el bot
     bot.run()
 
 if __name__ == '__main__':
@@ -1136,6 +1092,5 @@ if __name__ == '__main__':
         main()
     except Exception as e:
         print(f"❌ Error: {e}")
-        # Reintentar después de 5 segundos
         time.sleep(5)
         main()
