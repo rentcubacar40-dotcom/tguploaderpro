@@ -653,53 +653,50 @@ def onmessage(update,bot:ObigramClient):
             isadmin = jdb.is_admin(username)
             if isadmin:
                 try:
-                    all_users_data = jdb.get_all_users()
-                    
+                    # Obtener todos los usuarios directamente del archivo JSON
+                    db_data = jdb.data
                     info_message = "<b>📊 INFORMACIÓN COMPLETA DE USUARIOS</b>\n\n"
                     total_users = 0
                     total_mb_used = 0
                     total_uploads = 0
                     active_users = 0
                     
-                    for user_data in all_users_data:
-                        user_id = user_data.get('username', '')
-                        if user_id != 'db' and user_id != '':
+                    for user_id, user_data in db_data.items():
+                        if user_id != 'db' and user_id != '' and isinstance(user_data, dict):
                             total_users += 1
-                            user_info = jdb.get_user(user_id)
                             
-                            if user_info:
-                                # Estadísticas del usuario
-                                mb_used = user_info.get('total_mb_used', 0)
-                                upload_count = user_info.get('upload_count', 0)
-                                last_upload = user_info.get('last_upload', 'Nunca')
-                                user_type = "👑 Admin" if jdb.is_admin(user_id) else "👤 User"
-                                created_date = user_info.get('created', 'Desconocida')
-                                cloud_type = user_info.get('cloudtype', 'moodle')
-                                upload_type = user_info.get('uploadtype', 'evidence')
-                                zip_size = user_info.get('zips', 100)
-                                
-                                total_mb_used += mb_used
-                                total_uploads += upload_count
-                                
-                                if upload_count > 0:
-                                    active_users += 1
-                                
-                                # Formatear tamaño usado
-                                if mb_used >= 1024:
-                                    size_display = f"{mb_used/1024:.2f} GB"
-                                else:
-                                    size_display = f"{mb_used:.2f} MB"
-                                
-                                info_message += f"<b>🔹 Usuario:</b> @{user_id}\n"
-                                info_message += f"<b>   Tipo:</b> {user_type}\n"
-                                info_message += f"<b>   💾 Espacio usado:</b> {size_display}\n"
-                                info_message += f"<b>   📤 Subidas realizadas:</b> {upload_count}\n"
-                                info_message += f"<b>   ⏰ Última subida:</b> {last_upload}\n"
-                                info_message += f"<b>   ☁️ Nube:</b> {cloud_type}\n"
-                                info_message += f"<b>   📝 Tipo subida:</b> {upload_type}\n"
-                                info_message += f"<b>   🗜️ Tamaño partes:</b> {zip_size} MB\n"
-                                info_message += f"<b>   📅 Registrado:</b> {created_date}\n"
-                                info_message += "━━━━━━━━━━━━━━━━━━━━\n\n"
+                            # Estadísticas del usuario
+                            mb_used = user_data.get('total_mb_used', 0)
+                            upload_count = user_data.get('upload_count', 0)
+                            last_upload = user_data.get('last_upload', 'Nunca')
+                            user_type = "👑 Admin" if user_data.get('admin', False) else "👤 User"
+                            created_date = user_data.get('created', 'Desconocida')
+                            cloud_type = user_data.get('cloudtype', 'moodle')
+                            upload_type = user_data.get('uploadtype', 'evidence')
+                            zip_size = user_data.get('zips', 100)
+                            
+                            total_mb_used += mb_used
+                            total_uploads += upload_count
+                            
+                            if upload_count > 0:
+                                active_users += 1
+                            
+                            # Formatear tamaño usado
+                            if mb_used >= 1024:
+                                size_display = f"{mb_used/1024:.2f} GB"
+                            else:
+                                size_display = f"{mb_used:.2f} MB"
+                            
+                            info_message += f"<b>🔹 Usuario:</b> @{user_id}\n"
+                            info_message += f"<b>   Tipo:</b> {user_type}\n"
+                            info_message += f"<b>   💾 Espacio usado:</b> {size_display}\n"
+                            info_message += f"<b>   📤 Subidas realizadas:</b> {upload_count}\n"
+                            info_message += f"<b>   ⏰ Última subida:</b> {last_upload}\n"
+                            info_message += f"<b>   ☁️ Nube:</b> {cloud_type}\n"
+                            info_message += f"<b>   📝 Tipo subida:</b> {upload_type}\n"
+                            info_message += f"<b>   🗜️ Tamaño partes:</b> {zip_size} MB\n"
+                            info_message += f"<b>   📅 Registrado:</b> {created_date}\n"
+                            info_message += "━━━━━━━━━━━━━━━━━━━━\n\n"
                     
                     # Estadísticas globales
                     if total_mb_used >= 1024:
@@ -946,42 +943,39 @@ def onmessage(update,bot:ObigramClient):
 
         if '/start' in msgText:
             if isadmin:
-                welcome_text = format_s1_message("🤖 Bot de Moodle - ADMIN", [
-                    "🚀 Subidas a Moodle/Cloud",
-                    "👨‍💻 Desarrollado por: @Eliel_21", 
-                    "⏱️ Enlaces: 8-30 minutos",
-                    "📤 Envía enlaces HTTP/HTTPS",
-                    "",
-                    "📝 COMANDOS ADMIN:",
-                    "• /myuser - Mi configuración",
-                    "• /zips - Tamaño de partes", 
-                    "• /account - Cuenta Moodle",
-                    "• /host - Servidor Moodle",
-                    "• /repoid - ID Repositorio",
-                    "• /cloud - Tipo de nube",
-                    "• /uptype - Tipo de subida",
-                    "• /proxy - Configurar proxy",
-                    "• /dir - Directorio cloud",
-                    "• /files - Ver archivos",
-                    "• /informacion - Info usuarios",
-                    "• /adduser - Agregar usuario",
-                    "• /banuser - Eliminar usuario",
-                    "• /getdb - Base de datos",
-                    "",
-                    "📚 COMANDOS GENERALES:",
-                    "• /tutorial - Guía completa"
-                ])
+                welcome_text = """╭━━━━❰🤖 Bot de Moodle - ADMIN❱━➣
+┣⪼ 🚀 Subidas a Moodle/Cloud
+┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
+┣⪼ ⏱️ Enlaces: 8-30 minutos
+┣⪼ 📤 Envía enlaces HTTP/HTTPS
+┣⪼ 📝 COMANDOS ADMIN:
+┣⪼ • /myuser - Mi configuración
+┣⪼ • /zips - Tamaño de partes
+┣⪼ • /account - Cuenta Moodle
+┣⪼ • /host - Servidor Moodle
+┣⪼ • /repoid - ID Repositorio
+┣⪼ • /cloud - Tipo de nube
+┣⪼ • /uptype - Tipo de subida
+┣⪼ • /proxy - Configurar proxy
+┣⪼ • /dir - Directorio cloud
+┣⪼ • /files - Ver archivos
+┣⪼ • /informacion - Info usuarios
+┣⪼ • /adduser - Agregar usuario
+┣⪼ • /banuser - Eliminar usuario
+┣⪼ • /getdb - Base de datos
+┣⪼ 📚 COMANDOS GENERALES:
+┣⪼ • /tutorial - Guía completa
+╰━━━━━━━━━━━━━━━➣"""
             else:
-                welcome_text = format_s1_message("🤖 Bot de Moodle", [
-                    "🚀 Subidas a Moodle/Cloud", 
-                    "👨‍💻 Desarrollado por: @Eliel_21",
-                    "⏱️ Enlaces: 8-30 minutos",
-                    "📤 Envía enlaces HTTP/HTTPS",
-                    "",
-                    "📝 COMANDOS DISPONIBLES:",
-                    "• /start - Información del bot",
-                    "• /tutorial - Guía completa"
-                ])
+                welcome_text = """╭━━━━❰🤖 Bot de Moodle❱━➣
+┣⪼ 🚀 Subidas a Moodle/Cloud
+┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
+┣⪼ ⏱️ Enlaces: 8-30 minutos
+┣⪼ 📤 Envía enlaces HTTP/HTTPS
+┣⪼ 📝 COMANDOS DISPONIBLES:
+┣⪼ • /start - Información del bot
+┣⪼ • /tutorial - Guía completa
+╰━━━━━━━━━━━━━━━➣"""
             
             bot.deleteMessage(message.chat.id, message.message_id)
             # Enviar solo texto sin foto
