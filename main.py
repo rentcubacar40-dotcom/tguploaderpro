@@ -360,7 +360,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             total_parts = file_upload_count
             
             if total_parts > 1:
-                finish_title = f"✅ Subida Completada - {total_parts} Partes"
+                finish_title = "✅ Subida Completada"
             else:
                 finish_title = "✅ Subida Completada"
                 
@@ -883,7 +883,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /adduser - Agregar usuario
 ┣⪼ /banuser - Eliminar usuario
 ┣⪼ /getdb - Base de datos
-┣⪼ 
+
 ┣⪼ 📚 COMANDOS GENERALES:
 ┣⪼ /tutorial - Guía completa
 ╰━━━━━━━━━━━━━━━➣"""
