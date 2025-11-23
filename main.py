@@ -8,7 +8,7 @@ import os
 import infos
 import xdlink
 import mediafire
-#from megacli.mega import Mega
+##from megacli.mega import Mega
 #import megacli.megafolder as megaf
 #import megacli.mega
 import datetime
