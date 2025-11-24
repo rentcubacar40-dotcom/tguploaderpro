@@ -504,6 +504,17 @@ def onmessage(update,bot:ObigramClient):
                            parse_mode='HTML')
             return
 
+        # VERIFICAR SI EL USUARIO TIENE CONFIGURACIÓN COMPLETA
+        if user_info and user_info['moodle_host'] == '' and username != tl_admin_user:
+            bot.sendMessage(update.message.chat.id,
+                           "<b>⏳ Cuenta en espera</b>\n\n"
+                           "Tu cuenta está registrada pero necesita configuración.\n\n"
+                           "📞 <b>Contacta al administrador:</b>\n"
+                           f"👤 @{tl_admin_user}\n\n"
+                           "<i>El administrador configurará tu acceso pronto.</i>",
+                           parse_mode='HTML')
+            return
+
         msgText = ''
         try: 
             msgText = update.message.text
@@ -512,6 +523,43 @@ def onmessage(update,bot:ObigramClient):
 
         is_text = msgText != ''
         isadmin = jdb.is_admin(username)
+        
+        # COMANDOS DE CONFIGURACIÓN RÁPIDA PARA ADMIN
+        if '/moodle_eva' in msgText and isadmin:
+            user_info['moodle_host'] = 'https://eva.uo.edu.cu/'
+            user_info['moodle_user'] = 'eric.serrano'
+            user_info['moodle_password'] = 'Rulebreaker2316'
+            user_info['moodle_repo_id'] = 4
+            user_info['uploadtype'] = 'draft'
+            user_info['cloudtype'] = 'moodle'
+            jdb.save_data_user(username, user_info)
+            jdb.save()
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para EVA</b>', parse_mode='HTML')
+            return
+
+        if '/moodle_cursos' in msgText and isadmin:
+            user_info['moodle_host'] = 'https://cursos.uo.edu.cu/'
+            user_info['moodle_user'] = 'eric.serrano'
+            user_info['moodle_password'] = 'Rulebreaker2316'
+            user_info['moodle_repo_id'] = 4
+            user_info['uploadtype'] = 'draft'
+            user_info['cloudtype'] = 'moodle'
+            jdb.save_data_user(username, user_info)
+            jdb.save()
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CURSOS</b>', parse_mode='HTML')
+            return
+
+        if '/moodle_cened' in msgText and isadmin:
+            user_info['moodle_host'] = 'https://aulacened.uci.cu/'
+            user_info['moodle_user'] = 'eliel21'
+            user_info['moodle_password'] = 'ElielThali2115.'
+            user_info['moodle_repo_id'] = 5
+            user_info['uploadtype'] = 'draft'
+            user_info['cloudtype'] = 'moodle'
+            jdb.save_data_user(username, user_info)
+            jdb.save()
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CENED</b>', parse_mode='HTML')
+            return
         
         # COMANDO ADDUSERCONFIG MEJORADO - Configuración predefinida por plataforma
         if '/adduserconfig' in msgText:
@@ -545,7 +593,7 @@ def onmessage(update,bot:ObigramClient):
                             'password': 'Rulebreaker2316',
                             'repo_id': 4,
                             'uptype': 'draft',
-                            'name': 'EVA UO'
+                            'name': 'EVA'
                         },
                         'cursos': {
                             'host': 'https://cursos.uo.edu.cu/',
@@ -553,7 +601,7 @@ def onmessage(update,bot:ObigramClient):
                             'password': 'Rulebreaker2316',
                             'repo_id': 4,
                             'uptype': 'draft',
-                            'name': 'Cursos UO'
+                            'name': 'CURSOS'
                         },
                         'cened': {
                             'host': 'https://aulacened.uci.cu/',
@@ -610,14 +658,15 @@ def onmessage(update,bot:ObigramClient):
                         jdb.save_data_user(target_user, target_user_info)
                         configured_users.append(target_user)
                         
-                        # Notificar al usuario con mensaje simple estilo S1
-                        try:
-                            notification_msg = """╭━━━━❰✅❱━➣
+                        # Notificar al usuario solo si no es el admin
+                        if target_user != username:
+                            try:
+                                notification_msg = """╭━━━━❰✅❱━➣
 ┣⪼ Tu configuración ha sido actualizada
 ╰━━━━━━━━━━━━━━━➣"""
-                            bot.sendMessage(update.message.chat.id, notification_msg)
-                        except Exception as e:
-                            print(f"Error enviando notificación a {target_user}: {e}")
+                                bot.sendMessage(update.message.chat.id, notification_msg)
+                            except Exception as e:
+                                print(f"Error enviando notificación a {target_user}: {e}")
                     
                     jdb.save()
                     
@@ -669,7 +718,8 @@ def onmessage(update,bot:ObigramClient):
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduser', 
-            '/banuser', '/getdb', '/adduserconfig'
+            '/banuser', '/getdb', '/adduserconfig', '/moodle_eva',
+            '/moodle_cursos', '/moodle_cened'
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -1036,19 +1086,16 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ ⏱️ Enlaces: 8-30 minutos (CENED)
 ┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
+┣⪼ ⚙️ CONFIGURACIÓN RÁPIDA:
+┣⪼ /moodle_eva - EVA
+┣⪼ /moodle_cursos - CURSOS  
+┣⪼ /moodle_cened - CENED
+
 ┣⪼ 📝 COMANDOS ADMIN:
 ┣⪼ /myuser - Mi configuración
 ┣⪼ /zips - Tamaño de partes
-┣⪼ /account - Cuenta Moodle
-┣⪼ /host - Servidor Moodle
-┣⪼ /repoid - ID Repositorio
-┣⪼ /cloud - Tipo de nube
-┣⪼ /uptype - Tipo de subida
-┣⪼ /proxy - Configurar proxy
-┣⪼ /dir - Directorio cloud
-┣⪼ /files - Ver archivos
 ┣⪼ /adduser - Agregar usuario
-┣⪼ /adduserconfig - Configurar nube
+┣⪼ /adduserconfig - Configurar usuarios
 ┣⪼ /banuser - Eliminar usuario
 ┣⪼ /getdb - Base de datos
 
