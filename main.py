@@ -144,16 +144,12 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
         print(str(ex))
     pass
 
-def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jdb=None, user_info=None):
+def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jdb=None):
     try:
         bot.editMessageText(message,'<b>🔄 Preparando para subir...</b>', parse_mode='HTML')
         evidence = None
         fileid = None
-        
-        # ✅ USAR user_info PASADO COMO PARÁMETRO
-        if user_info is None:
-            user_info = jdb.get_user(update.message.sender.username)
-            
+        user_info = jdb.get_user(update.message.sender.username)
         cloudtype = user_info['cloudtype']
         proxy = ProxyCloud.parse(user_info['proxy'])
         if cloudtype == 'moodle':
@@ -278,16 +274,12 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
         bot.editMessageText(message,f'<b>❌ Error</b>\n<code>{str(ex)}</code>', parse_mode='HTML')
         return None
 
-def processFile(update,bot,message,file,thread=None,jdb=None, user_info=None):
+def processFile(update,bot,message,file,thread=None,jdb=None):
     try:
         file_size = get_file_size(file)
         username = update.message.sender.username
-        
-        # ✅ USAR user_info PASADO COMO PARÁMETRO O OBTENERLO
-        if user_info is None:
-            user_info = jdb.get_user(username)
-            
-        max_file_size = 1024 * 1024 * user_info['zips']
+        getUser = jdb.get_user(username)
+        max_file_size = 1024 * 1024 * getUser['zips']
         file_upload_count = 0
         client = None
         findex = 0
@@ -312,15 +304,15 @@ def processFile(update,bot,message,file,thread=None,jdb=None, user_info=None):
             zip.close()
             mult_file.close()
             
-            # ✅ PASAR user_info A processUploadFiles
-            client = processUploadFiles(original_filename,file_size,mult_file.files,update,bot,message,thread=thread,jdb=jdb, user_info=user_info)
+            # Usar el nombre base original para la subida, no el archivo temporal
+            client = processUploadFiles(original_filename,file_size,mult_file.files,update,bot,message,thread=thread,jdb=jdb)
             try:
                 os.unlink(file)
             except:pass
             file_upload_count = len(mult_file.files)
         else:
-            # ✅ PASAR user_info A processUploadFiles
-            client = processUploadFiles(original_filename,file_size,[file],update,bot,message,thread=thread,jdb=jdb, user_info=user_info)
+            # Para archivos pequeños, usar el nombre original
+            client = processUploadFiles(original_filename,file_size,[file],update,bot,message,thread=thread,jdb=jdb)
             file_upload_count = 1
             
         if thread and thread.getStore('stop'):
@@ -329,12 +321,12 @@ def processFile(update,bot,message,file,thread=None,jdb=None, user_info=None):
         # ACTUALIZAR ESTADÍSTICAS DE USO
         try:
             file_size_mb = file_size / (1024 * 1024)
-            current_total = user_info.get('total_mb_used', 0)
+            current_total = getUser.get('total_mb_used', 0)
             new_total = current_total + file_size_mb
-            user_info['total_mb_used'] = new_total
-            user_info['last_upload'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            user_info['upload_count'] = user_info.get('upload_count', 0) + 1
-            jdb.save_data_user(username, user_info)
+            getUser['total_mb_used'] = new_total
+            getUser['last_upload'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            getUser['upload_count'] = getUser.get('upload_count', 0) + 1
+            jdb.save_data_user(username, getUser)
             jdb.save()
         except Exception as e:
             print(f"Error actualizando estadísticas: {e}")
@@ -343,48 +335,43 @@ def processFile(update,bot,message,file,thread=None,jdb=None, user_info=None):
         evidname = ''
         files = []
         if client:
-            if user_info['cloudtype'] == 'moodle':
-                if user_info['uploadtype'] == 'evidence':
+            if getUser['cloudtype'] == 'moodle':
+                if getUser['uploadtype'] == 'evidence':
                     try:
-                        evidname = base_name
+                        evidname = base_name  # Usar el nombre base original
                         txtname = evidname + '.txt'
-                        # Para evidence necesitamos un cliente nuevo para obtener los archivos
-                        proxy = ProxyCloud.parse(user_info['proxy'])
-                        evidence_client = MoodleClient(user_info['moodle_user'],
-                                                     user_info['moodle_password'],
-                                                     user_info['moodle_host'],
-                                                     user_info['moodle_repo_id'],
-                                                     proxy=proxy)
-                        if evidence_client.login():
-                            evidences = evidence_client.getEvidences()
-                            for ev in evidences:
-                                if ev['name'] == evidname:
-                                   files = ev['files']
-                                   break
-                            evidence_client.logout()
-                    except Exception as e:
-                        print(f"Error obteniendo evidences: {e}")
-                if user_info['uploadtype'] == 'draft' or user_info['uploadtype'] == 'blog' or user_info['uploadtype']=='calendario':
+                        evidences = client.getEvidences()
+                        for ev in evidences:
+                            if ev['name'] == evidname:
+                               files = ev['files']
+                               break
+                            if len(ev['files'])>0:
+                               findex+=1
+                        client.logout()
+                    except:pass
+                if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
                    for draft in client:
                        files.append({'name':draft['file'],'directurl':draft['url']})
             else:
                 for data in client:
                     files.append({'name':data['name'],'directurl':data['url']})
 
-            # ✅ USAR user_info CORRECTO PARA WEBSERVICE
+            # ✅ EXTENDER WEBSERVICE PARA EVA Y CURSOS
             for i in range(len(files)):
                 url = files[i]['directurl']
-                host = user_info.get('moodle_host', '')
-                if 'aulacened.uci.cu' in host or 'eva.uo.edu.cu' in host or 'cursos.uo.edu.cu' in host:
-                    if 'aulacened.uci.cu' in url:
-                        files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
-                    if 'eva.uo.edu.cu' in url:
-                        files[i]['directurl'] = url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
-                    if 'cursos.uo.edu.cu' in url:
-                        files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
+                # Para Cened
+                if 'aulacened.uci.cu' in url:
+                    files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
+                # Para Eva
+                if 'eva.uo.edu.cu' in url:
+                    files[i]['directurl'] = url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
+                # Para Cursos
+                if 'cursos.uo.edu.cu' in url:
+                    files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
 
             bot.deleteMessage(message.chat.id,message.message_id)
             
+            # Usar el nombre original del archivo
             total_parts = file_upload_count
             
             if total_parts > 1:
@@ -392,9 +379,10 @@ def processFile(update,bot,message,file,thread=None,jdb=None, user_info=None):
             else:
                 finish_title = "✅ Subida Completada"
                 
-            # ✅ USAR user_info CORRECTO PARA DETERMINAR MENSAJE
-            host = user_info.get('moodle_host', '')
+            # ✅ DETERMINAR MENSAJE SEGÚN LA NUBE
+            host = getUser.get('moodle_host', '')
             if 'eva.uo.edu.cu' in host or 'cursos.uo.edu.cu' in host:
+                # Para Eva y Cursos - NO mostrar duración
                 finishInfo = format_s1_message(finish_title, [
                     f"📄 Archivo: {original_filename}",
                     f"📦 Tamaño total: {sizeof_fmt(file_size)}",
@@ -402,6 +390,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None, user_info=None):
                     f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
                 ])
             else:
+                # Para Cened y otras - MOSTRAR duración
                 finishInfo = format_s1_message(finish_title, [
                     f"📄 Archivo: {original_filename}",
                     f"📦 Tamaño total: {sizeof_fmt(file_size)}",
@@ -413,9 +402,9 @@ def processFile(update,bot,message,file,thread=None,jdb=None, user_info=None):
             bot.sendMessage(message.chat.id, finishInfo)
             
             if len(files) > 0:
-                filesInfo = infos.createFileMsg(original_filename,files)
+                filesInfo = infos.createFileMsg(original_filename,files)  # Pasar nombre original
                 bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
-                txtname = base_name + '.txt'
+                txtname = base_name + '.txt'  # Usar nombre base para el TXT
                 sendTxt(txtname,files,update,bot)
     except Exception as ex:
         print(f"Error en processFile: {ex}")
@@ -429,10 +418,7 @@ def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
         file = downloader.download_url(url,progressfunc=downloadFile,args=(bot,message,thread))
         if not downloader.stoping:
             if file:
-                # ✅ OBTENER user_info ACTUAL Y PASARLO
-                username = update.message.sender.username
-                user_info = jdb.get_user(username)
-                processFile(update,bot,message,file,thread=thread,jdb=jdb, user_info=user_info)
+                processFile(update,bot,message,file,thread=thread,jdb=jdb)
             else:
                 megadl(update,bot,message,url,file_name,thread,jdb=jdb)
         
@@ -453,20 +439,14 @@ def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
             file_name = info['name']
             megadl.download_url(megaurl,dest_path=None,dest_filename=file_name,progressfunc=downloadFile,args=(bot,message,thread))
             if not megadl.stoping:
-                # ✅ OBTENER user_info ACTUAL Y PASARLO
-                username = update.message.sender.username
-                user_info = jdb.get_user(username)
-                processFile(update,bot,message,file_name,thread=thread, user_info=user_info)
+                processFile(update,bot,message,file_name,thread=thread)
         except:
             files = megaf.get_files_from_folder(megaurl)
             for f in files:
                 file_name = f['name']
                 megadl._download_file(f['handle'],f['key'],dest_path=None,dest_filename=file_name,is_public=False,progressfunc=downloadFile,args=(bot,message,thread),f_data=f['data'])
                 if not megadl.stoping:
-                    # ✅ OBTENER user_info ACTUAL Y PASARLO
-                    username = update.message.sender.username
-                    user_info = jdb.get_user(username)
-                    processFile(update,bot,message,file_name,thread=thread, user_info=user_info)
+                    processFile(update,bot,message,file_name,thread=thread)
             pass
         
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
@@ -493,7 +473,9 @@ def sendTxt(name,files,update,bot):
 
 ⬇️ <b>Descarga el archivo TXT abajo</b>"""
         
+        # Enviar solo el TXT sin thumbnail
         bot.sendFile(update.message.chat.id, name, caption=info_msg, parse_mode='HTML')
+        
         os.unlink(name)
         
     except Exception as ex:
@@ -504,91 +486,6 @@ def sendTxt(name,files,update,bot):
                 os.unlink(name)
         except:
             pass
-
-# NUEVA FUNCIÓN: Obtener archivos del usuario según el tipo de upload
-def get_user_files(user_info, proxy):
-    """Obtiene lista de archivos según el tipo de upload"""
-    try:
-        client = MoodleClient(user_info['moodle_user'],
-                              user_info['moodle_password'],
-                              user_info['moodle_host'],
-                              user_info['moodle_repo_id'],
-                              proxy=proxy)
-        loged = client.login()
-        if not loged:
-            return None
-            
-        files_list = []
-        
-        if user_info['uploadtype'] == 'evidence':
-            evidences = client.getEvidences()
-            for ev in evidences:
-                for file in ev['files']:
-                    files_list.append({
-                        'name': file['name'],
-                        'url': file['url'],
-                        'type': 'evidence',
-                        'evidence_id': ev['id']
-                    })
-                    
-        elif user_info['uploadtype'] == 'draft':
-            moodle_files = client.getFiles()
-            for file_info in moodle_files:
-                if 'filename' in file_info:
-                    files_list.append({
-                        'name': file_info['filename'],
-                        'url': file_info.get('url', ''),
-                        'type': 'draft'
-                    })
-                    
-        client.logout()
-        return files_list
-        
-    except Exception as e:
-        print(f"Error obteniendo archivos: {e}")
-        return None
-
-# NUEVA FUNCIÓN: Eliminar archivo del usuario
-def delete_user_file(user_info, proxy, file_identifier):
-    """Elimina archivo según el tipo de upload"""
-    try:
-        client = MoodleClient(user_info['moodle_user'],
-                              user_info['moodle_password'],
-                              user_info['moodle_host'],
-                              user_info['moodle_repo_id'],
-                              proxy=proxy)
-        loged = client.login()
-        if not loged:
-            return False, "Error de conexión"
-            
-        success = False
-        message = ""
-        
-        if user_info['uploadtype'] == 'draft':
-            try:
-                result = client.deleteFile(file_identifier)
-                success = True
-                message = f"✅ Archivo '{file_identifier}' eliminado"
-            except Exception as e:
-                success = False
-                message = f"❌ Error eliminando archivo: {str(e)}"
-                
-        elif user_info['uploadtype'] == 'evidence':
-            evidences = client.getEvidences()
-            for ev in evidences:
-                if ev['name'] == file_identifier:
-                    client.deleteEvidence(ev)
-                    success = True
-                    message = f"✅ Evidence '{file_identifier}' eliminado"
-                    break
-            if not success:
-                message = f"❌ Evidence '{file_identifier}' no encontrado"
-                
-        client.logout()
-        return success, message
-        
-    except Exception as e:
-        return False, f"❌ Error: {str(e)}"
 
 def onmessage(update,bot:ObigramClient):
     try:
@@ -643,7 +540,6 @@ def onmessage(update,bot:ObigramClient):
                            "• /moodle_cened - Configurar Cened\n"
                            "• /moodle_eva - Configurar Eva\n"
                            "• /moodle_cursos - Configurar Cursos\n"
-                           "• /eliminar - Eliminar archivos\n"
                            "• Enlaces HTTP/HTTPS para subir archivos",
                            parse_mode='HTML')
             return
@@ -656,7 +552,7 @@ def onmessage(update,bot:ObigramClient):
                            parse_mode='HTML')
             return
 
-        # NUEVOS COMANDOS PARA CONFIGURAR PLATAFORMAS - ACCESO PARA TODOS
+        # ✅ NUEVOS COMANDOS PARA CONFIGURAR PLATAFORMAS
         if '/moodle_cened' in msgText:
             try:
                 getUser = user_info
@@ -722,57 +618,6 @@ def onmessage(update,bot:ObigramClient):
                                    parse_mode='HTML')
                 else:
                     bot.sendMessage(update.message.chat.id, '❌ Error al configurar Cursos', parse_mode='HTML')
-            except Exception as e:
-                bot.sendMessage(update.message.chat.id, f'❌ Error: {str(e)}', parse_mode='HTML')
-            return
-
-        # NUEVO COMANDO PARA ELIMINAR ENLACES - ACCESIBLE PARA TODOS
-        if '/eliminar' in msgText:
-            try:
-                parts = msgText.split(' ', 1)
-                if len(parts) < 2:
-                    proxy = ProxyCloud.parse(user_info['proxy'])
-                    files_list = get_user_files(user_info, proxy)
-                    
-                    if not files_list:
-                        bot.sendMessage(update.message.chat.id,
-                                       "<b>🗑️ Eliminar Archivos</b>\n\n"
-                                       "📝 <b>Uso:</b> <code>/eliminar nombre_archivo</code>\n\n"
-                                       "📋 <b>Ejemplos:</b>\n"
-                                       "<code>/eliminar mi_archivo.pdf</code>\n"
-                                       "<code>/eliminar video.mp4</code>\n\n"
-                                       "❌ <b>No se encontraron archivos para eliminar</b>",
-                                       parse_mode='HTML')
-                        return
-                    
-                    files_text = "<b>🗑️ Eliminar Archivos</b>\n\n"
-                    files_text += "📝 <b>Uso:</b> <code>/eliminar nombre_archivo</code>\n\n"
-                    files_text += "📋 <b>Archivos disponibles:</b>\n"
-                    
-                    for i, file_info in enumerate(files_list[:10]):
-                        files_text += f"{i+1}. <code>{file_info['name']}</code>\n"
-                    
-                    if len(files_list) > 10:
-                        files_text += f"\n... y {len(files_list) - 10} más\n"
-                    
-                    files_text += "\n🔧 <b>Ejemplo:</b> <code>/eliminar nombre_del_archivo</code>"
-                    
-                    bot.sendMessage(update.message.chat.id, files_text, parse_mode='HTML')
-                    return
-                
-                file_to_delete = parts[1].strip()
-                
-                processing_msg = bot.sendMessage(update.message.chat.id,
-                                               f"🔍 <b>Buscando y eliminando:</b>\n"
-                                               f"<code>{file_to_delete}</code>\n\n"
-                                               f"⏳ <b>Procesando...</b>",
-                                               parse_mode='HTML')
-                
-                proxy = ProxyCloud.parse(user_info['proxy'])
-                success, message = delete_user_file(user_info, proxy, file_to_delete)
-                
-                bot.editMessageText(processing_msg, message, parse_mode='HTML')
-                
             except Exception as e:
                 bot.sendMessage(update.message.chat.id, f'❌ Error: {str(e)}', parse_mode='HTML')
             return
@@ -967,6 +812,7 @@ def onmessage(update,bot:ObigramClient):
             try:
                 cmd = str(msgText).split(' ',2)
                 host = cmd[1]
+                # ✅ Asegurar que el host termine con /
                 if not host.endswith('/'):
                     host += '/'
                 getUser = user_info
@@ -1146,7 +992,6 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /moodle_cened - Configurar Cened
 ┣⪼ /moodle_eva - Configurar Eva
 ┣⪼ /moodle_cursos - Configurar Cursos
-┣⪼ /eliminar - Eliminar archivos
 ╰━━━━━━━━━━━━━━━➣"""
             else:
                 welcome_text = """╭━━━━❰🤖 Bot de Moodle❱━➣
@@ -1161,7 +1006,6 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /moodle_cened - Configurar Cened
 ┣⪼ /moodle_eva - Configurar Eva
 ┣⪼ /moodle_cursos - Configurar Cursos
-┣⪼ /eliminar - Eliminar archivos
 ╰━━━━━━━━━━━━━━━➣"""
             
             bot.deleteMessage(message.chat.id, message.message_id)
