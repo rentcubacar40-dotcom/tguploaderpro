@@ -611,7 +611,7 @@ class MoodleClient(object):
         jsondec = dec.decode(resp.text)
         return jsondec['list']
    
-    def delteFile(self,name):
+    def deleteFile(self,name):
         urlfiles = self.path+'user/files.php'
         resp = self.session.get(urlfiles,proxies=self.proxy,headers=self.baseheaders)
         soup = BeautifulSoup(resp.text,'html.parser')
@@ -636,3 +636,4 @@ class MoodleClient(object):
     def logout(self):
         logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
         self.session.post(logouturl,proxies=self.proxy,headers=self.baseheaders)
+
