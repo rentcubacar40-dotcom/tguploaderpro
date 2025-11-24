@@ -356,13 +356,21 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 for data in client:
                     files.append({'name':data['name'],'directurl':data['url']})
 
-            # COMPATIBILIDAD CON NUBES UO - Incluir eva.uo.edu.cu y cursos.uo.edu.cu
+            # COMPATIBILIDAD CON NUBES UO - Incluir webservice para todas las plataformas
             for i in range(len(files)):
                 url = files[i]['directurl']
-                # Incluir las nuevas nubes UO en el reemplazo de URLs
-                if any(domain in url for domain in ['aulacened.uci.cu', 'eva.uo.edu.cu', 'cursos.uo.edu.cu']):
+                
+                # Para CENED - reemplazo existente
+                if 'aulacened.uci.cu' in url:
                     files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
-                    # Para las nubes UO, aplicar lógica similar si es necesario
+                
+                # Para EVA UO - agregar webservice
+                elif 'eva.uo.edu.cu' in url and '/webservice/' not in url:
+                    files[i]['directurl'] = url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
+                
+                # Para CURSOS UO - agregar webservice  
+                elif 'cursos.uo.edu.cu' in url and '/webservice/' not in url:
+                    files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
 
             bot.deleteMessage(message.chat.id,message.message_id)
             
@@ -379,16 +387,16 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 f"📄 Archivo: {original_filename}",
                 f"📦 Tamaño total: {sizeof_fmt(file_size)}",
                 f"🔗 Enlaces generados: {len(files)}",
-                f"⏱️ Duración enlaces: 8-30 minutos",  # CAMBIO AQUÍ
+                f"⏱️ Duración enlaces: 8-30 minutos",
                 f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
             ])
             
             bot.sendMessage(message.chat.id, finishInfo)
             
             if len(files) > 0:
-                filesInfo = infos.createFileMsg(original_filename,files)  # Pasar nombre original
+                filesInfo = infos.createFileMsg(original_filename,files)
                 bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
-                txtname = base_name + '.txt'  # Usar nombre base para el TXT
+                txtname = base_name + '.txt'
                 sendTxt(txtname,files,update,bot)
     except Exception as ex:
         print(f"Error en processFile: {ex}")
@@ -454,9 +462,7 @@ def sendTxt(name,files,update,bot):
 
 ⬇️ <b>Descarga el archivo TXT abajo</b>"""
         
-        # Enviar solo el TXT sin thumbnail
         bot.sendFile(update.message.chat.id, name, caption=info_msg, parse_mode='HTML')
-        
         os.unlink(name)
         
     except Exception as ex:
@@ -531,7 +537,7 @@ def onmessage(update,bot:ObigramClient):
                     target_users_text = parts[1]
                     platform = parts[2].strip().lower()
                     
-                    # CONFIGURACIONES PREDEFINIDAS (CONTRASEÑA DE CENED CORREGIDA)
+                    # CONFIGURACIONES PREDEFINIDAS
                     configs = {
                         'eva': {
                             'host': 'https://eva.uo.edu.cu/',
@@ -599,21 +605,16 @@ def onmessage(update,bot:ObigramClient):
                         target_user_info['moodle_repo_id'] = config['repo_id']
                         target_user_info['uploadtype'] = config['uptype']
                         target_user_info['cloudtype'] = 'moodle'
-                        target_user_info['zips'] = 100  # Valor por defecto
+                        target_user_info['zips'] = 100
                         
                         jdb.save_data_user(target_user, target_user_info)
                         configured_users.append(target_user)
                         
-                        # Notificar al usuario que su configuración fue actualizada
+                        # Notificar al usuario con mensaje simple estilo S1
                         try:
-                            notification_msg = format_s1_message("⚙️ Configuración Actualizada", [
-                                f"👤 Tu cuenta ha sido configurada",
-                                f"🌐 Plataforma: {config['name']}",
-                                f"🔗 Host: {config['host']}",
-                                f"👤 Usuario: {config['user']}",
-                                f"📤 Tipo: {config['uptype']}",
-                                f"✅ Ya puedes subir archivos"
-                            ])
+                            notification_msg = """╭━━━━❰✅❱━➣
+┣⪼ Tu configuración ha sido actualizada
+╰━━━━━━━━━━━━━━━➣"""
                             bot.sendMessage(update.message.chat.id, notification_msg)
                         except Exception as e:
                             print(f"Error enviando notificación a {target_user}: {e}")
@@ -668,7 +669,7 @@ def onmessage(update,bot:ObigramClient):
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduser', 
-            '/banuser', '/getdb', '/adduserconfig'  # Agregado el nuevo comando
+            '/banuser', '/getdb', '/adduserconfig'
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -688,7 +689,7 @@ def onmessage(update,bot:ObigramClient):
                            parse_mode='HTML')
             return
 
-        # COMANDO ADDUSER MEJORADO - MÚLTIPLES USUARIOS
+        # COMANDO ADDUSER
         if '/adduser' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
@@ -743,7 +744,7 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
 
-        # COMANDO BANUSER MEJORADO - MÚLTIPLES USUARIOS
+        # COMANDO BANUSER
         if '/banuser' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
@@ -814,7 +815,7 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
 
-        # COMANDO TUTORIAL - DISPONIBLE PARA TODOS
+        # COMANDO TUTORIAL
         if '/tutorial' in msgText:
             try:
                 tuto = open('tuto.txt','r', encoding='utf-8')
