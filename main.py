@@ -289,23 +289,30 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 os.unlink(file)
             except:pass
             return
+        
+        # Obtener el nombre base del archivo original
+        original_filename = file.split('/')[-1] if '/' in file else file
+        base_name = original_filename.split('.')[0]
             
         if file_size > max_file_size:
             compresingInfo = infos.createCompresing(file,file_size,max_file_size)
             bot.editMessageText(message,compresingInfo)
-            zipname = str(file).split('.')[0] + createID()
+            zipname = base_name + createID()
             mult_file = zipfile.MultiFile(zipname,max_file_size)
             zip = zipfile.ZipFile(mult_file,  mode='w', compression=zipfile.ZIP_DEFLATED)
             zip.write(file)
             zip.close()
             mult_file.close()
-            client = processUploadFiles(file,file_size,mult_file.files,update,bot,message,thread=thread,jdb=jdb)
+            
+            # Usar el nombre base original para la subida, no el archivo temporal
+            client = processUploadFiles(original_filename,file_size,mult_file.files,update,bot,message,thread=thread,jdb=jdb)
             try:
                 os.unlink(file)
             except:pass
             file_upload_count = len(mult_file.files)
         else:
-            client = processUploadFiles(file,file_size,[file],update,bot,message,thread=thread,jdb=jdb)
+            # Para archivos pequeños, usar el nombre original
+            client = processUploadFiles(original_filename,file_size,[file],update,bot,message,thread=thread,jdb=jdb)
             file_upload_count = 1
             
         if thread and thread.getStore('stop'):
@@ -331,7 +338,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             if getUser['cloudtype'] == 'moodle':
                 if getUser['uploadtype'] == 'evidence':
                     try:
-                        evidname = str(file).split('.')[0]
+                        evidname = base_name  # Usar el nombre base original
                         txtname = evidname + '.txt'
                         evidences = client.getEvidences()
                         for ev in evidences:
@@ -356,7 +363,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
 
             bot.deleteMessage(message.chat.id,message.message_id)
             
-            original_filename = file.split('/')[-1] if '/' in file else file
+            # Usar el nombre original del archivo
             total_parts = file_upload_count
             
             if total_parts > 1:
@@ -375,9 +382,9 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             bot.sendMessage(message.chat.id, finishInfo)
             
             if len(files) > 0:
-                filesInfo = infos.createFileMsg(file,files)
+                filesInfo = infos.createFileMsg(original_filename,files)  # Pasar nombre original
                 bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
-                txtname = str(file).split('/')[-1].split('.')[0] + '.txt'
+                txtname = base_name + '.txt'  # Usar nombre base para el TXT
                 sendTxt(txtname,files,update,bot)
     except Exception as ex:
         print(f"Error en processFile: {ex}")
