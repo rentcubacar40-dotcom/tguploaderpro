@@ -356,10 +356,13 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 for data in client:
                     files.append({'name':data['name'],'directurl':data['url']})
 
+            # COMPATIBILIDAD CON NUBES UO - Incluir eva.uo.edu.cu y cursos.uo.edu.cu
             for i in range(len(files)):
                 url = files[i]['directurl']
-                if 'aulacened.uci.cu' in url:
+                # Incluir las nuevas nubes UO en el reemplazo de URLs
+                if any(domain in url for domain in ['aulacened.uci.cu', 'eva.uo.edu.cu', 'cursos.uo.edu.cu']):
                     files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
+                    # Para las nubes UO, aplicar lógica similar si es necesario
 
             bot.deleteMessage(message.chat.id,message.message_id)
             
@@ -371,11 +374,12 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             else:
                 finish_title = "✅ Subida Completada"
                 
+            # MENSAJE ACTUALIZADO CON 8-30 MINUTOS
             finishInfo = format_s1_message(finish_title, [
                 f"📄 Archivo: {original_filename}",
                 f"📦 Tamaño total: {sizeof_fmt(file_size)}",
                 f"🔗 Enlaces generados: {len(files)}",
-                f"⏱️ Duración enlaces: 8-30 minutos",
+                f"⏱️ Duración enlaces: 8-30 minutos",  # CAMBIO AQUÍ
                 f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
             ])
             
@@ -437,13 +441,10 @@ def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
 
 def sendTxt(name,files,update,bot):
     try:
+        # SOLO ENLACES EN EL TXT - SIN INFORMACIÓN ADICIONAL
         with open(name, 'w', encoding='utf-8') as txt:
-            txt.write("📄 ENLACES DE DESCARGA\n")
-            txt.write("=" * 30 + "\n\n")
-            for i, f in enumerate(files, 1):
-                txt.write(f"{i}. {f['name']}\n")
-                txt.write(f"🔗 {f['directurl']}\n")
-                txt.write("-" * 40 + "\n")
+            for f in files:
+                txt.write(f"{f['directurl']}\n")
         
         info_msg = f"""<b>📄 Archivo de enlaces generado</b>
 
@@ -506,10 +507,168 @@ def onmessage(update,bot:ObigramClient):
         is_text = msgText != ''
         isadmin = jdb.is_admin(username)
         
+        # COMANDO ADDUSERCONFIG MEJORADO - Configuración predefinida por plataforma
+        if '/adduserconfig' in msgText:
+            isadmin = jdb.is_admin(username)
+            if isadmin:
+                try:
+                    # Formato: /adduserconfig usuario1,usuario2 [eva|cursos|cened]
+                    parts = str(msgText).split(' ', 2)
+                    if len(parts) < 3:
+                        bot.sendMessage(update.message.chat.id,
+                                       '<b>❌ Formato incorrecto</b>\n\n'
+                                       '<b>Formatos válidos:</b>\n'
+                                       '<code>/adduserconfig usuario eva</code>\n'
+                                       '<code>/adduserconfig usuario1,usuario2 cursos</code>\n'
+                                       '<code>/adduserconfig usuario cened</code>\n\n'
+                                       '<b>Plataformas disponibles:</b>\n'
+                                       '• <b>eva</b> - https://eva.uo.edu.cu/\n'
+                                       '• <b>cursos</b> - https://cursos.uo.edu.cu/\n'
+                                       '• <b>cened</b> - https://aulacened.uci.cu/',
+                                       parse_mode='HTML')
+                        return
+                    
+                    target_users_text = parts[1]
+                    platform = parts[2].strip().lower()
+                    
+                    # CONFIGURACIONES PREDEFINIDAS (CONTRASEÑA DE CENED CORREGIDA)
+                    configs = {
+                        'eva': {
+                            'host': 'https://eva.uo.edu.cu/',
+                            'user': 'eric.serrano',
+                            'password': 'Rulebreaker2316',
+                            'repo_id': 4,
+                            'uptype': 'draft',
+                            'name': 'EVA UO'
+                        },
+                        'cursos': {
+                            'host': 'https://cursos.uo.edu.cu/',
+                            'user': 'eric.serrano', 
+                            'password': 'Rulebreaker2316',
+                            'repo_id': 4,
+                            'uptype': 'draft',
+                            'name': 'Cursos UO'
+                        },
+                        'cened': {
+                            'host': 'https://aulacened.uci.cu/',
+                            'user': 'eliel21',
+                            'password': 'ElielThali2115.',
+                            'repo_id': 5,
+                            'uptype': 'draft',
+                            'name': 'CENED'
+                        }
+                    }
+                    
+                    # Validar plataforma
+                    if platform not in configs:
+                        bot.sendMessage(update.message.chat.id,
+                                       f'<b>❌ Plataforma no válida</b>\n\n'
+                                       f'<b>Plataformas disponibles:</b>\n'
+                                       f'• <b>eva</b> - {configs["eva"]["name"]}\n'
+                                       f'• <b>cursos</b> - {configs["cursos"]["name"]}\n'
+                                       f'• <b>cened</b> - {configs["cened"]["name"]}',
+                                       parse_mode='HTML')
+                        return
+                    
+                    # Procesar múltiples usuarios (acepta con @ o sin @)
+                    target_users = [user.strip().replace('@', '') for user in target_users_text.split(',')]
+                    config = configs[platform]
+                    
+                    configured_users = []
+                    not_found_users = []
+                    self_config_attempt = False
+                    
+                    for target_user in target_users:
+                        if not target_user:
+                            continue
+                            
+                        if target_user == username:
+                            self_config_attempt = True
+                            continue
+                            
+                        # Verificar si el usuario objetivo existe
+                        target_user_info = jdb.get_user(target_user)
+                        if not target_user_info:
+                            not_found_users.append(target_user)
+                            continue
+                        
+                        # Actualizar configuración del usuario objetivo
+                        target_user_info['moodle_host'] = config['host']
+                        target_user_info['moodle_user'] = config['user']
+                        target_user_info['moodle_password'] = config['password']
+                        target_user_info['moodle_repo_id'] = config['repo_id']
+                        target_user_info['uploadtype'] = config['uptype']
+                        target_user_info['cloudtype'] = 'moodle'
+                        target_user_info['zips'] = 100  # Valor por defecto
+                        
+                        jdb.save_data_user(target_user, target_user_info)
+                        configured_users.append(target_user)
+                        
+                        # Notificar al usuario que su configuración fue actualizada
+                        try:
+                            notification_msg = format_s1_message("⚙️ Configuración Actualizada", [
+                                f"👤 Tu cuenta ha sido configurada",
+                                f"🌐 Plataforma: {config['name']}",
+                                f"🔗 Host: {config['host']}",
+                                f"👤 Usuario: {config['user']}",
+                                f"📤 Tipo: {config['uptype']}",
+                                f"✅ Ya puedes subir archivos"
+                            ])
+                            bot.sendMessage(update.message.chat.id, notification_msg)
+                        except Exception as e:
+                            print(f"Error enviando notificación a {target_user}: {e}")
+                    
+                    jdb.save()
+                    
+                    # Construir mensaje de resultado
+                    message_parts = []
+                    
+                    if configured_users:
+                        if len(configured_users) == 1:
+                            message_parts.append(f'<b>✅ Usuario configurado:</b> @{configured_users[0]}\n<b>Plataforma:</b> {config["name"]}')
+                        else:
+                            users_list = ', '.join([f'@{user}' for user in configured_users])
+                            message_parts.append(f'<b>✅ Usuarios configurados:</b> {users_list}\n<b>Plataforma:</b> {config["name"]}')
+                    
+                    if not_found_users:
+                        if len(not_found_users) == 1:
+                            message_parts.append(f'<b>❌ Usuario no encontrado:</b> @{not_found_users[0]}')
+                        else:
+                            users_list = ', '.join([f'@{user}' for user in not_found_users])
+                            message_parts.append(f'<b>❌ Usuarios no encontrados:</b> {users_list}')
+                    
+                    if self_config_attempt:
+                        message_parts.append('<b>⚠️ No puedes configurarte a ti mismo con este comando</b>')
+                    
+                    if message_parts:
+                        final_message = '\n\n'.join(message_parts)
+                    else:
+                        final_message = '<b>❌ No se proporcionaron usuarios válidos</b>'
+                        
+                    bot.sendMessage(update.message.chat.id, final_message, parse_mode='HTML')
+                    
+                except Exception as e:
+                    print(f"Error en adduserconfig: {e}")
+                    bot.sendMessage(update.message.chat.id,
+                                   '<b>❌ Error en el comando</b>\n\n'
+                                   '<b>Formatos válidos:</b>\n'
+                                   '<code>/adduserconfig usuario eva</code>\n'
+                                   '<code>/adduserconfig usuario1,usuario2 cursos</code>\n'
+                                   '<code>/adduserconfig usuario cened</code>\n\n'
+                                   '<b>Ejemplos:</b>\n'
+                                   '<code>/adduserconfig juan eva</code>\n'
+                                   '<code>/adduserconfig juan,maria cursos</code>\n'
+                                   '<code>/adduserconfig pedro cened</code>',
+                                   parse_mode='HTML')
+            else:
+                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
+            return
+
         if not isadmin and is_text and any(cmd in msgText for cmd in [
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
-            '/files', '/txt_', '/del_', '/delall', '/adduser', '/banuser', '/getdb'
+            '/files', '/txt_', '/del_', '/delall', '/adduser', 
+            '/banuser', '/getdb', '/adduserconfig'  # Agregado el nuevo comando
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -873,7 +1032,7 @@ def onmessage(update,bot:ObigramClient):
                 welcome_text = """╭━━━━❰🤖 Bot de Moodle - ADMIN❱━➣
 ┣⪼ 🚀 Subidas a Moodle/Cloud
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
-┣⪼ ⏱️ Enlaces: 8-30 minutos
+┣⪼ ⏱️ Enlaces: 8-30 minutos (CENED)
 ┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
 ┣⪼ 📝 COMANDOS ADMIN:
@@ -888,6 +1047,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /dir - Directorio cloud
 ┣⪼ /files - Ver archivos
 ┣⪼ /adduser - Agregar usuario
+┣⪼ /adduserconfig - Configurar nube
 ┣⪼ /banuser - Eliminar usuario
 ┣⪼ /getdb - Base de datos
 
@@ -898,7 +1058,7 @@ def onmessage(update,bot:ObigramClient):
                 welcome_text = """╭━━━━❰🤖 Bot de Moodle❱━➣
 ┣⪼ 🚀 Subidas a Moodle/Cloud
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
-┣⪼ ⏱️ Enlaces: 8-30 minutos
+┣⪼ ⏱️ Enlaces: 8-30 minutos (CENED)
 ┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
 ┣⪼ 📝 COMANDOS DISPONIBLES:
