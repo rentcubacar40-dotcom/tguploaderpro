@@ -293,8 +293,10 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             max_file_size = 1024 * 1024 * 99  # 99 MB para EVA
         elif getUser['moodle_host'] == 'https://cursos.uo.edu.cu/':
             max_file_size = 1024 * 1024 * 99  # 99 MB para CURSOS
+        elif getUser['moodle_host'] == 'https://aula.scu.sld.cu/':  # SCU
+            max_file_size = 1024 * 1024 * 99  # 99 MB para SCU
         else:
-            max_file_size = 1024 * 1024 * getUser['zips']  # 100 MB para CENED por defecto
+            max_file_size = 1024 * 1024 * getUser['zips']  # Por defecto
             
         file_upload_count = 0
         client = None
@@ -363,7 +365,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         if thread and thread.getStore('stop'):
             return
             
-        # ACTUALIZAR ESTADÍSTICAS DE USUO
+        # ACTUALIZAR ESTADÍSTICAS DE USUARIO
         try:
             file_size_mb = file_size / (1024 * 1024)
             current_total = getUser.get('total_mb_used', 0)
@@ -401,7 +403,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 for data in client:
                     files.append({'name':data['name'],'directurl':data['url']})
 
-            # COMPATIBILIDAD CON NUBES UO - Incluir webservice para todas las plataformas
+            # COMPATIBILIDAD CON NUBES - Incluir webservice para todas las plataformas
             for i in range(len(files)):
                 url = files[i]['directurl']
                 
@@ -416,6 +418,10 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 # Para CURSOS UO - agregar webservice  
                 elif 'cursos.uo.edu.cu' in url and '/webservice/' not in url:
                     files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
+                
+                # PARA SCU - agregar webservice
+                elif 'aula.scu.sld.cu' in url and '/webservice/' not in url:
+                    files[i]['directurl'] = url.replace('://aula.scu.sld.cu/', '://aula.scu.sld.cu/webservice/')
 
             bot.deleteMessage(message.chat.id,message.message_id)
             
@@ -424,24 +430,21 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             
             # MENSAJE FINAL SEGÚN PLATAFORMA
             platform_name = get_platform_name(getUser['moodle_host'])
-            finish_title = "✅ Subida Completada"
             
             if platform_name == 'CENED':
-                finishInfo = format_s1_message(finish_title, [
-                    f"📄 Archivo: {original_filename}",
-                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                    f"🔗 Enlaces generados: {len(files)}",
-                    f"⏱️ Duración enlaces: 8-30 minutos",
-                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
-                ])
+                duration_msg = "8-30 minutos"
+            elif platform_name == 'SCU':
+                duration_msg = "Desconocido"
             else:
-                finishInfo = format_s1_message(finish_title, [
-                    f"📄 Archivo: {original_filename}",
-                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                    f"🔗 Enlaces generados: {len(files)}",
-                    f"⏱️ Duración enlaces: 3 días",
-                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
-                ])
+                duration_msg = "3 días"
+
+            finishInfo = format_s1_message("✅ Subida Completada", [
+                f"📄 Archivo: {original_filename}",
+                f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                f"🔗 Enlaces generados: {len(files)}",
+                f"⏱️ Duración enlaces: {duration_msg}",
+                f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
+            ])
             
             bot.sendMessage(message.chat.id, finishInfo)
             
@@ -534,6 +537,8 @@ def get_platform_name(host):
         return 'CURSOS UO'
     elif 'aulacened.uci.cu' in host:
         return 'CENED'
+    elif 'aula.scu.sld.cu' in host:  # NUEVA PLATAFORMA SCU
+        return 'SCU'
     else:
         return 'Personalizada'
 
@@ -622,13 +627,27 @@ def onmessage(update,bot:ObigramClient):
             jdb.save()
             bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CENED</b>', parse_mode='HTML')
             return
+
+        # NUEVO COMANDO - PLATAFORMA SCU
+        if '/moodle_scu' in msgText and isadmin:
+            user_info['moodle_host'] = 'https://aula.scu.sld.cu/'
+            user_info['moodle_user'] = 'eliel2115'
+            user_info['moodle_password'] = 'ElielThali2115.'
+            user_info['moodle_repo_id'] = 5
+            user_info['uploadtype'] = 'blog'
+            user_info['cloudtype'] = 'moodle'
+            user_info['zips'] = 99
+            jdb.save_data_user(username, user_info)
+            jdb.save()
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para SCU</b>', parse_mode='HTML')
+            return
         
         # COMANDO ADDUSERCONFIG MEJORADO - Agrega y configura usuarios
         if '/adduserconfig' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
                 try:
-                    # Formato: /adduserconfig usuario1,usuario2 [eva|cursos|cened]
+                    # Formato: /adduserconfig usuario1,usuario2 [eva|cursos|cened|scu]
                     parts = str(msgText).split(' ', 2)
                     if len(parts) < 3:
                         bot.sendMessage(update.message.chat.id,
@@ -636,7 +655,8 @@ def onmessage(update,bot:ObigramClient):
                                        '<b>Formatos válidos:</b>\n'
                                        '<code>/adduserconfig usuario eva</code>\n'
                                        '<code>/adduserconfig usuario1,usuario2 cursos</code>\n'
-                                       '<code>/adduserconfig usuario cened</code>',
+                                       '<code>/adduserconfig usuario cened</code>\n'
+                                       '<code>/adduserconfig usuario scu</code>',
                                        parse_mode='HTML')
                         return
                     
@@ -652,7 +672,7 @@ def onmessage(update,bot:ObigramClient):
                             'repo_id': 4,
                             'uptype': 'draft',
                             'name': 'EVA UO',
-                            'zips': 99  # 99 MB para EVA
+                            'zips': 99
                         },
                         'cursos': {
                             'host': 'https://cursos.uo.edu.cu/',
@@ -661,7 +681,7 @@ def onmessage(update,bot:ObigramClient):
                             'repo_id': 4,
                             'uptype': 'draft',
                             'name': 'CURSOS UO',
-                            'zips': 99  # 99 MB para CURSOS
+                            'zips': 99
                         },
                         'cened': {
                             'host': 'https://aulacened.uci.cu/',
@@ -670,7 +690,16 @@ def onmessage(update,bot:ObigramClient):
                             'repo_id': 5,
                             'uptype': 'draft',
                             'name': 'CENED',
-                            'zips': 100  # 100 MB para CENED
+                            'zips': 100
+                        },
+                        'scu': {  # NUEVA PLATAFORMA SCU
+                            'host': 'https://aula.scu.sld.cu/',
+                            'user': 'eliel2115',
+                            'password': 'ElielThali2115.',
+                            'repo_id': 5,
+                            'uptype': 'blog',
+                            'name': 'SCU',
+                            'zips': 99
                         }
                     }
                     
@@ -678,7 +707,7 @@ def onmessage(update,bot:ObigramClient):
                     if platform not in configs:
                         bot.sendMessage(update.message.chat.id,
                                        '<b>❌ Plataforma no válida</b>\n'
-                                       '<b>Opciones:</b> eva, cursos, cened',
+                                       '<b>Opciones:</b> eva, cursos, cened, scu',
                                        parse_mode='HTML')
                         return
                     
@@ -776,7 +805,7 @@ def onmessage(update,bot:ObigramClient):
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
-            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened'
+            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened', '/moodle_scu'
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -1101,6 +1130,8 @@ def onmessage(update,bot:ObigramClient):
             duration_info = ""
             if platform_name == 'CENED':
                 duration_info = "┣⪼ ⏱️ Enlaces: 8-30 minutos\n"
+            elif platform_name == 'SCU':
+                duration_info = "┣⪼ ⏱️ Enlaces: Desconocido\n"
             else:
                 duration_info = "┣⪼ ⏱️ Enlaces: 3 días\n"
             
@@ -1115,6 +1146,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /moodle_eva - EVA
 ┣⪼ /moodle_cursos - CURSOS  
 ┣⪼ /moodle_cened - CENED
+┣⪼ /moodle_scu - SCU
 
 ┣⪼ 👥 GESTIÓN DE USUARIOS:
 ┣⪼ /adduserconfig - Agregar y configurar
