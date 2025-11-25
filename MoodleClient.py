@@ -595,39 +595,56 @@ class MoodleClient(object):
 
     # 🆕 NUEVO MÉTODO MÁS ROBUSTO PARA CALENDARIO
     def upload_file_calendar_direct(self, file, progressfunc=None, args=(), tokenize=False):
-        """Sube archivos directamente al calendario usando API - MÁS ROBUSTO"""
-        try:
-            print("🔧 Usando método calendar_direct...")
-            
-            # 1. PRIMERO subir el archivo a drafts (esto ya funciona)
-            fileid, filedata = self.upload_file_draft(file, progressfunc, args, tokenize)
-            
-            if not filedata:
-                print("❌ Error subiendo a draft")
-                return None, None
-                
-            print(f"✅ Archivo subido a draft: {filedata['url']}")
-            
-            # 2. LUEGO crear evento en calendario con el archivo adjunto
-            event_data = self.create_calendar_event_with_file(filedata['url'], file.split('/')[-1])
-            
-            if event_data:
-                print(f"✅ Evento creado en calendario: {event_data.get('event_url')}")
-                # Retornar los datos del evento del calendario
-                return fileid, {
-                    'file': file.split('/')[-1],
-                    'url': event_data.get('event_url', filedata['url']),
-                    'directurl': filedata['url'],
-                    'normalurl': filedata['url'],
-                    'type': 'calendar'
-                }
-            else:
-                print("⚠️ No se pudo crear evento, retornando datos de draft")
-                return fileid, filedata
+    """Sube archivos directamente al calendario usando API - MÁS ROBUSTO"""
+    try:
+        print("🔧 [DEBUG] Iniciando upload_file_calendar_direct...")
         
-        except Exception as e:
-            print(f"❌ Error en upload_file_calendar_direct: {e}")
+        # 1. PRIMERO subir el archivo a drafts - IMPORTANTE: tokenize=False
+        print("🔧 [DEBUG] Subiendo a draft...")
+        fileid, filedata = self.upload_file_draft(file, progressfunc, args, tokenize=False)
+        
+        if not filedata:
+            print("❌ [DEBUG] Error: upload_file_draft retornó None")
             return None, None
+            
+        print(f"✅ [DEBUG] Archivo subido a draft")
+        
+        # 2. Usar la URL NORMAL (sin webservice) para el calendario
+        calendar_url = filedata.get('normalurl', filedata.get('url'))
+        
+        # Si la URL tiene webservice, obtener la original
+        if 'webservice/pluginfile.php' in str(calendar_url):
+            # Revertir a la URL original de moodle
+            calendar_url = str(calendar_url).replace('webservice/pluginfile.php', 'pluginfile.php')
+            if '?token=' in calendar_url:
+                calendar_url = calendar_url.split('?token=')[0]
+        
+        print(f"🔧 [DEBUG] URL para calendario: {calendar_url}")
+        
+        # 3. Crear evento en calendario con la URL ORIGINAL
+        print("🔧 [DEBUG] Creando evento en calendario...")
+        event_data = self.create_calendar_event_with_file(calendar_url, file.split('/')[-1])
+        
+        if event_data:
+            print(f"✅ [DEBUG] Evento creado exitosamente!")
+            # Retornar datos con la URL del evento del calendario
+            result_data = {
+                'file': file.split('/')[-1],
+                'url': event_data.get('event_url', filedata['url']),
+                'directurl': filedata['url'],
+                'normalurl': filedata.get('normalurl', filedata['url']),
+                'type': 'calendar'
+            }
+            return fileid, result_data
+        else:
+            print("⚠️ [DEBUG] No se pudo crear evento, retornando datos de draft")
+            return fileid, filedata
+        
+    except Exception as e:
+        print(f"❌ [DEBUG] Error en upload_file_calendar_direct: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
 
     def create_calendar_event_with_file(self, file_url, filename):
         """Crea un evento en el calendario con enlace al archivo"""
@@ -771,3 +788,4 @@ class MoodleClient(object):
     def logout(self):
         logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
         self.session.post(logouturl, proxies=self.proxy, headers=self.baseheaders)
+
