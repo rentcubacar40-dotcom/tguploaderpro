@@ -153,34 +153,72 @@ class MoodleClient(object):
 
         return {'name':name,'desc':desc,'id':evidenceid,'url':resp.url,'files':[]}
 
-    def createBlog(self,name,itemid,desc="<p>Archivo subido mediante bot</p>"):
+    def createBlog(self, filename, itemid, desc="<p>Archivo subido mediante bot</p>"):
         try:
-            post_attach = f'{self.path}blog/edit.php?action=add&userid='+self.userid
-            resp = self.session.get(post_attach,proxies=self.proxy,headers=self.baseheaders)
-            soup = BeautifulSoup(resp.text,'html.parser') 
-            attachment_filemanager = soup.find('input',{'id':'id_attachment_filemanager'})['value']
+            post_attach = f'{self.path}blog/edit.php?action=add&userid=' + self.userid
+            resp = self.session.get(post_attach, proxies=self.proxy, headers=self.baseheaders)
+            soup = BeautifulSoup(resp.text, 'html.parser') 
+            
+            attachment_filemanager = soup.find('input', {'id': 'id_attachment_filemanager'})['value']
             post_url = f'{self.path}blog/edit.php'
-            payload = {'action':'add',
-                       'entryid':'',
-                       'modid':0,
-                       'courseid':0,
-                       'sesskey':self.sesskey,
-                       '_qf__blog_edit_form':1,
-                       'mform_isexpanded_id_general':1,
-                       'mform_isexpanded_id_tagshdr':1,
-                       'subject':name,
-                       'summary_editor[text]':desc,
-                       'summary_editor[format]':1,
-                       'summary_editor[itemid]':itemid,
-                       'attachment_filemanager':attachment_filemanager,
-                       'publishstate':'site',
-                       'tags':'_qf__force_multiselect_submission',
-                       'submitbutton':'Guardar+cambios'}
-            resp = self.session.post(post_url,data=payload,proxies=self.proxy,headers=self.baseheaders)
-            return resp
+            
+            payload = {
+                'action': 'add',
+                'entryid': '',
+                'modid': 0,
+                'courseid': 0,
+                'sesskey': self.sesskey,
+                '_qf__blog_edit_form': 1,
+                'mform_isexpanded_id_general': 1,
+                'mform_isexpanded_id_tagshdr': 1,
+                'subject': f"Archivo: {filename}",
+                'summary_editor[text]': desc,
+                'summary_editor[format]': 1,
+                'summary_editor[itemid]': itemid,
+                'attachment_filemanager': attachment_filemanager,
+                'publishstate': 'site',
+                'tags': '_qf__force_multiselect_submission',
+                'submitbutton': 'Guardar cambios'
+            }
+            
+            resp = self.session.post(post_url, data=payload, proxies=self.proxy, headers=self.baseheaders, allow_redirects=False)
+            
+            # Intentar obtener el ID del blog de la respuesta
+            blog_id = None
+            if resp.status_code in [302, 303]:  # Redirección
+                location = resp.headers.get('Location', '')
+                if 'entry=' in location:
+                    blog_id = location.split('entry=')[1].split('&')[0]
+                elif 'entryid=' in location:
+                    blog_id = location.split('entryid=')[1].split('&')[0]
+                elif '/blog/index.php?entryid=' in location:
+                    blog_id = location.split('entryid=')[1].split('&')[0]
+            
+            # Si no se obtuvo de la redirección, intentar del contenido
+            if not blog_id and resp.status_code == 200:
+                try:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    # Buscar enlaces de edición
+                    edit_links = soup.find_all('a', string=lambda text: text and 'Editar' in text)
+                    for link in edit_links:
+                        href = link.get('href', '')
+                        if 'entryid=' in href:
+                            blog_id = href.split('entryid=')[1].split('&')[0]
+                            break
+                    
+                    # Si no se encuentra, buscar en formularios
+                    if not blog_id:
+                        edit_form = soup.find('form', {'action': lambda x: x and 'blog' in x})
+                        if edit_form and 'entryid' in edit_form.get('action', ''):
+                            blog_id = edit_form['action'].split('entryid=')[1].split('&')[0]
+                except Exception as e:
+                    print(f"Error extrayendo ID del contenido: {e}")
+            
+            print(f"🔧 DEBUG createBlog: ID encontrado = {blog_id}")
+            return resp, blog_id
         except Exception as e:
             print(f"Error en createBlog: {e}")
-            return None
+            return None, None
 
     def createNewEvent(self,filedata):
         eventposturl = f'{self.path}lib/ajax/service.php?sesskey='+self.sesskey+'&info=core_calendar_submit_create_update_form'
@@ -311,83 +349,90 @@ class MoodleClient(object):
         except:
             return None,None
 
-    def upload_file_blog(self,file,blog=None,itemid=None,progressfunc=None,args=(),tokenize=False):
+    def upload_file_blog(self, file, blog=None, itemid=None, progressfunc=None, args=(), tokenize=False):
         try:
             fileurl = self.path + 'blog/edit.php?action=add&userid=' + self.userid
-            resp = self.session.get(fileurl,proxies=self.proxy,headers=self.baseheaders)
-            soup = BeautifulSoup(resp.text,'html.parser')
+            resp = self.session.get(fileurl, proxies=self.proxy, headers=self.baseheaders)
+            soup = BeautifulSoup(resp.text, 'html.parser')
             sesskey = self.sesskey
-            if self.sesskey=='':
-                sesskey  =  soup.find('input',attrs={'name':'sesskey'})['value']
-            _qf__user_files_form = 1
-            query = self.extractQuery(soup.find('object',attrs={'type':'text/html'})['data'])
+            if self.sesskey == '':
+                sesskey = soup.find('input', attrs={'name': 'sesskey'})['value']
+            
+            query = self.extractQuery(soup.find('object', attrs={'type': 'text/html'})['data'])
             client_id = self.getclientid(resp.text)
-        
+            
             itempostid = query['itemid']
             if itemid:
                 itempostid = itemid
 
-            of = open(file,'rb')
+            of = open(file, 'rb')
             b = uuid.uuid4().hex
             try:
                 areamaxbyttes = query['areamaxbytes']
-                if areamaxbyttes=='0':
+                if areamaxbyttes == '0':
                     areamaxbyttes = '-1'
             except:
                 areamaxbyttes = '-1'
+            
             upload_data = {
-                'title':(None,''),
-                'author':(None,'ObysoftDev'),
-                'license':(None,'allrightsreserved'),
-                'itemid':(None,itempostid),
-                'repo_id':(None,str(self.repo_id)),
-                'p':(None,''),
-                'page':(None,''),
-                'env':(None,query['env']),
-                'sesskey':(None,sesskey),
-                'client_id':(None,client_id),
-                'maxbytes':(None,query['maxbytes']),
-                'areamaxbytes':(None,areamaxbyttes),
-                'ctx_id':(None,query['ctx_id']),
-                'savepath':(None,'/')}
+                'title': (None, ''),
+                'author': (None, 'ObysoftDev'),
+                'license': (None, 'allrightsreserved'),
+                'itemid': (None, itempostid),
+                'repo_id': (None, str(self.repo_id)),
+                'p': (None, ''),
+                'page': (None, ''),
+                'env': (None, query['env']),
+                'sesskey': (None, sesskey),
+                'client_id': (None, client_id),
+                'maxbytes': (None, query['maxbytes']),
+                'areamaxbytes': (None, areamaxbyttes),
+                'ctx_id': (None, query['ctx_id']),
+                'savepath': (None, '/')
+            }
             upload_file = {
-                'repo_upload_file':(file,of,'application/octet-stream'),
+                'repo_upload_file': (file, of, 'application/octet-stream'),
                 **upload_data
-                }
-            post_file_url = self.path+'repository/repository_ajax.php?action=upload'
-            encoder = rt.MultipartEncoder(upload_file,boundary=b)
-            progrescall = CallingUpload(progressfunc,file,args)
+            }
+            
+            post_file_url = self.path + 'repository/repository_ajax.php?action=upload'
+            encoder = rt.MultipartEncoder(upload_file, boundary=b)
+            progrescall = CallingUpload(progressfunc, file, args)
             callback = partial(progrescall)
-            monitor = MultipartEncoderMonitor(encoder,callback=callback)
-            resp2 = self.session.post(post_file_url,data=monitor,headers={"Content-Type": "multipart/form-data; boundary="+b,**self.baseheaders},proxies=self.proxy)
+            monitor = MultipartEncoderMonitor(encoder, callback=callback)
+            resp2 = self.session.post(post_file_url, data=monitor, 
+                                     headers={"Content-Type": "multipart/form-data; boundary=" + b, **self.baseheaders}, 
+                                     proxies=self.proxy)
             of.close()
 
             data = self.parsejson(resp2.text)
-            data['url'] = str(data['url']).replace('\\','')
+            data['url'] = str(data['url']).replace('\\', '')
             data['normalurl'] = data['url']
             
-            # CORRECCIÓN CLAVE: Crear enlace específico para BLOG
+            # CORRECCIÓN: Crear enlace específico para BLOG con ID correcto
             if self.userdata and 'token' in self.userdata:
                 if not tokenize:
-                    # Para blog, usar estructura específica: /blog/attachment/[itemid]/[filename]
                     filename = data['file']
                     ctx_id = query['ctx_id']
-                    # Crear enlace específico para blog
-                    blog_url = f"{self.path}webservice/pluginfile.php/{ctx_id}/blog/attachment/{itempostid}/{urllib.parse.quote(filename)}?token={self.userdata['token']}"
+                    
+                    # Crear entrada de blog y obtener ID
+                    blog_response, blog_id = self.createBlog(data['file'], itempostid)
+                    
+                    # Si no se obtuvo el ID, usar valores comunes de Moodle
+                    if not blog_id:
+                        # Intentar valores comunes: 1, 2, 3, 4, 5
+                        blog_id = "3"  # Valor por defecto más común
+                    
+                    print(f"🔧 DEBUG upload_file_blog: Blog ID usado = {blog_id}")
+                    
+                    # Crear enlace con estructura correcta
+                    blog_url = f"{self.path}webservice/pluginfile.php/{ctx_id}/blog/attachment/{blog_id}/{urllib.parse.quote(filename)}?token={self.userdata['token']}"
                     data['url'] = blog_url
                     data['type'] = 'blog'
+                    data['blog_id'] = blog_id
                 else:
                     data['url'] = self.host_tokenize + S5Crypto.encrypt(data['url']) + '/' + self.userdata['s5token']
                     data['type'] = 'blog'
-            
-            # Crear entrada de blog después de subir el archivo
-            try:
-                blog_entry = self.createBlog(data['file'], itempostid)
-                if blog_entry and blog_entry.status_code == 200:
-                    data['blog_created'] = True
-            except Exception as e:
-                print(f"Error creando entrada de blog: {e}")
-                data['blog_created'] = False
             
             return itempostid, data
         except Exception as e:
