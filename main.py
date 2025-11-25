@@ -202,6 +202,10 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                 while resp is None:
                     if thread and thread.getStore('stop'):
                         break
+                    
+                    # DEBUG: Mostrar tipo de upload
+                    print(f"🔧 DEBUG: Subiendo parte {i}/{total_parts} - Tipo: {user_info['uploadtype']}")
+                    
                     if user_info['uploadtype'] == 'evidence':
                         fileid,resp = client.upload_file(f,evidence,fileid,
                                                         progressfunc=uploadFile,
@@ -214,12 +218,15 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                                                               args=(bot,message,filename,thread,part_info),
                                                               tokenize=tokenize)
                         draftlist.append(resp)
+                        print(f"🔧 DEBUG Draft upload - URL: {resp.get('url', 'No URL')}")
                     if user_info['uploadtype'] == 'blog':
                         fileid,resp = client.upload_file_blog(f,
                                                              progressfunc=uploadFile,
                                                              args=(bot,message,filename,thread,part_info),
                                                              tokenize=tokenize)
                         draftlist.append(resp)
+                        print(f"🔧 DEBUG Blog upload - URL: {resp.get('url', 'No URL')}")
+                        print(f"🔧 DEBUG Blog upload - Type: {resp.get('type', 'No type')}")
                     if user_info['uploadtype'] == 'calendario':
                         fileid,resp = client.upload_file_calendar(f,
                                                                  progressfunc=uploadFile,
@@ -331,7 +338,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             mult_file = zipfile.MultiFile(zipname, max_file_size)
             
             # CREAR ZIP CON EL ARCHIVO Y SU NOMBRE ORIGINAL
-            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
+            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLated) as zipf:
                 # Agregar el archivo con su nombre original preservado
                 zipf.write(temp_file_path, arcname=original_filename)
             
@@ -396,19 +403,27 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                                findex+=1
                         client.logout()
                     except:pass
-                # CORRECCIÓN AQUÍ - DISTINGUIR ENTRE DRAFT Y BLOG
+                
+                # CORRECCIÓN: SEPARAR PROCESAMIENTO POR TIPO
                 if getUser['uploadtype'] == 'draft':
                    for draft in client:
                        files.append({'name':draft['file'],'directurl':draft['url']})
                 elif getUser['uploadtype'] == 'blog':
                    for blog in client:
-                       files.append({'name':blog['file'],'directurl':blog['url']})
+                       # Para blog, usar el URL específico que ya viene con estructura correcta
+                       files.append({'name':f"📝 {blog['file']}", 'directurl': blog['url']})
                 elif getUser['uploadtype'] == 'calendario':
                    for calendar in client:
                        files.append({'name':calendar['file'],'directurl':calendar['url']})
             else:
                 for data in client:
                     files.append({'name':data['name'],'directurl':data['url']})
+
+            # DEBUG: Mostrar información de los archivos procesados
+            print(f"🔧 DEBUG: Uploadtype: {getUser['uploadtype']}")
+            print(f"🔧 DEBUG: Total archivos procesados: {len(files)}")
+            for i, f in enumerate(files):
+                print(f"🔧 DEBUG Archivo {i}: {f['name']} -> {f['directurl']}")
 
             # COMPATIBILIDAD CON NUBES - Incluir webservice para todas las plataformas
             for i in range(len(files)):
@@ -426,8 +441,8 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 elif 'cursos.uo.edu.cu' in url and '/webservice/' not in url:
                     files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
                 
-                # PARA SCU - agregar webservice
-                elif 'aula.scu.sld.cu' in url and '/webservice/' not in url:
+                # PARA SCU - agregar webservice (pero los enlaces de blog ya vienen con webservice)
+                elif 'aula.scu.sld.cu' in url and '/webservice/' not in url and '/blog/attachment/' not in url:
                     files[i]['directurl'] = url.replace('://aula.scu.sld.cu/', '://aula.scu.sld.cu/webservice/')
 
             bot.deleteMessage(message.chat.id,message.message_id)
