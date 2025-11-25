@@ -273,11 +273,70 @@ class MoodleClient(object):
                     print(f"Error obteniendo entradas recientes: {e}")
             
             print(f"🔧 DEBUG createBlog: ID encontrado = {blog_id}")
+            
+            # Verificar que el archivo se adjuntó correctamente
+            if resp.status_code in [200, 302, 303]:
+                print("🔧 DEBUG: Entrada de blog creada, verificando adjuntos...")
+                
+                # Esperar un momento para que Moodle procese el adjunto
+                import time
+                time.sleep(2)
+                
+                # Verificar en la lista de blogs que el archivo esté adjunto
+                blog_files = self.getBlogFiles()
+                if blog_files:
+                    print(f"🔧 DEBUG: Archivos adjuntos encontrados: {len(blog_files)}")
+                    for f in blog_files:
+                        print(f"🔧 DEBUG: - {f['name']}")
+            
             return resp, blog_id
             
         except Exception as e:
             print(f"Error en createBlog: {e}")
             return None, None
+
+    def getBlogFiles(self):
+        """Obtiene los archivos adjuntos de las entradas de blog del usuario"""
+        try:
+            blog_url = f'{self.path}blog/index.php?userid={self.userid}'
+            resp = self.session.get(blog_url, proxies=self.proxy, headers=self.baseheaders)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            files = []
+            
+            # Buscar todas las entradas de blog
+            blog_entries = soup.find_all('div', class_=['blogentry', 'blog_entry', 'forumpost'])
+            
+            for entry in blog_entries:
+                # Buscar archivos adjuntos en la entrada
+                attachments = entry.find_all('a', href=lambda x: x and 'pluginfile.php' in x and '/blog/attachment/' in x)
+                
+                for attachment in attachments:
+                    file_url = attachment.get('href', '')
+                    file_name = attachment.get_text().strip()
+                    
+                    # Convertir a enlace directo con token
+                    if self.userdata and 'token' in self.userdata:
+                        # Asegurarse de que tenga la estructura correcta
+                        if 'webservice/' not in file_url:
+                            file_url = file_url.replace('pluginfile.php', 'webservice/pluginfile.php')
+                        
+                        # Agregar token si no lo tiene
+                        if 'token=' not in file_url:
+                            file_url += f'?token={self.userdata["token"]}' if '?' not in file_url else f'&token={self.userdata["token"]}'
+                    
+                    files.append({
+                        'name': f"📝 {file_name}",
+                        'directurl': file_url,
+                        'url': file_url
+                    })
+            
+            print(f"🔧 DEBUG getBlogFiles: Encontrados {len(files)} archivos")
+            return files
+            
+        except Exception as e:
+            print(f"Error en getBlogFiles: {e}")
+            return []
 
     def getLastBlogId(self):
         """Obtiene el ID de la última entrada de blog del usuario"""
@@ -534,11 +593,16 @@ class MoodleClient(object):
                             blog_id = self.findWorkingBlogId()
                             print(f"🔧 DEBUG: ID por prueba y error = {blog_id}")
                     
-                    # Crear enlace con estructura correcta usando el ID REAL
-                    blog_url = f"{self.path}webservice/pluginfile.php/{ctx_id}/blog/attachment/{blog_id}/{urllib.parse.quote(filename)}?token={self.userdata['token']}"
+                    # CORRECCIÓN: Usar ID fijo de un dígito para attachment (1, 2, 3, etc.)
+                    # En Moodle, los attachments en blog usan IDs pequeños
+                    attachment_id = "1"  # Siempre usar 1 para el primer attachment
+
+                    # Crear enlace con estructura correcta usando ID fijo
+                    blog_url = f"{self.path}webservice/pluginfile.php/{ctx_id}/blog/attachment/{attachment_id}/{urllib.parse.quote(filename)}?token={self.userdata['token']}"
                     data['url'] = blog_url
                     data['type'] = 'blog'
                     data['blog_id'] = blog_id
+                    data['attachment_id'] = attachment_id
                     
                     print(f"🔧 DEBUG: Enlace final generado = {blog_url}")
                 else:
