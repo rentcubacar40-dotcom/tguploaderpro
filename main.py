@@ -23,7 +23,7 @@ import socket
 import S5Crypto
 import threading
 
-def create_progress_bar(percentage, bars=15):  # Cambiado a 15 elementos
+def create_progress_bar(percentage, bars=15):
     """Crea barra de progreso estilo S1 con ⬢⬡"""
     filled = int(percentage / 100 * bars)
     empty = bars - filled
@@ -46,7 +46,7 @@ def format_time(seconds):
         minutes = int(seconds // 60)
         secs = int(seconds % 60)
         
-        if minutes > 99:  # Si son más de 99 minutos
+        if minutes > 99:
             hours = minutes // 60
             remaining_minutes = minutes % 60
             return f"{hours:02d}:{remaining_minutes:02d}+"
@@ -54,10 +54,6 @@ def format_time(seconds):
         return f"{minutes:02d}:{secs:02d}"
     except:
         return "00:00"
-
-# Variables globales para tracking de progreso
-download_start_time = {}
-upload_start_time = {}
 
 def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,args):
     try:
@@ -68,39 +64,23 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,ar
             downloader.stop()
             return
             
-        # Tracking de tiempo de inicio
-        if filename not in download_start_time:
-            download_start_time[filename] = datetime.datetime.now()
-            start_time = download_start_time[filename]
-        else:
-            start_time = download_start_time[filename]
-        
-        current_time = datetime.datetime.now()
-        elapsed = (current_time - start_time).total_seconds()
-        
         downloadingInfo = ''
         if totalBits == 0:
             percentage = 0
         else:
             percentage = (currentBits / totalBits) * 100
         
-        progress_bar = create_progress_bar(percentage, 15)  # 15 elementos
+        progress_bar = create_progress_bar(percentage, 15)
         
         total_mb = totalBits / (1024 * 1024)
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        # MEJOR CÁLCULO DE TIEMPO ESTIMADO
-        if percentage > 0 and elapsed > 0:
-            # Calcular velocidad promedio
-            average_speed = currentBits / elapsed if elapsed > 0 else 0
-            
-            if average_speed > 0 and totalBits > currentBits:
-                remaining_bits = totalBits - currentBits
-                remaining_time = remaining_bits / average_speed
-                eta_formatted = format_time(remaining_time)
-            else:
-                eta_formatted = "Calculando..."
+        # CÁLCULO SIMPLIFICADO Y MÁS PRECISO DEL TIEMPO
+        if speed > 0 and totalBits > currentBits:
+            remaining_bits = totalBits - currentBits
+            remaining_time = remaining_bits / speed
+            eta_formatted = format_time(remaining_time)
         else:
             eta_formatted = "Calculando..."
         
@@ -130,40 +110,23 @@ def uploadFile(filename,currentBits,totalBits,speed,time_elapsed,args):
             
         part_info = args[4] if len(args) > 4 else None
         
-        # Tracking de tiempo de inicio
-        upload_key = f"{filename}_{originalfile}" if originalfile else filename
-        if upload_key not in upload_start_time:
-            upload_start_time[upload_key] = datetime.datetime.now()
-            start_time = upload_start_time[upload_key]
-        else:
-            start_time = upload_start_time[upload_key]
-        
-        current_time = datetime.datetime.now()
-        elapsed = (current_time - start_time).total_seconds()
-        
         uploadingInfo = ''
         if totalBits == 0:
             percentage = 0
         else:
             percentage = (currentBits / totalBits) * 100
             
-        progress_bar = create_progress_bar(percentage, 15)  # 15 elementos
+        progress_bar = create_progress_bar(percentage, 15)
         
         total_mb = totalBits / (1024 * 1024)
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        # MEJOR CÁLCULO DE TIEMPO ESTIMADO
-        if percentage > 0 and elapsed > 0:
-            # Calcular velocidad promedio
-            average_speed = currentBits / elapsed if elapsed > 0 else 0
-            
-            if average_speed > 0 and totalBits > currentBits:
-                remaining_bits = totalBits - currentBits
-                remaining_time = remaining_bits / average_speed
-                eta_formatted = format_time(remaining_time)
-            else:
-                eta_formatted = "Calculando..."
+        # CÁLCULO SIMPLIFICADO Y MÁS PRECISO DEL TIEMPO
+        if speed > 0 and totalBits > currentBits:
+            remaining_bits = totalBits - currentBits
+            remaining_time = remaining_bits / speed
+            eta_formatted = format_time(remaining_time)
         else:
             eta_formatted = "Calculando..."
         
@@ -184,11 +147,6 @@ def uploadFile(filename,currentBits,totalBits,speed,time_elapsed,args):
         ])
             
         bot.editMessageText(message, uploadingInfo)
-        
-        # Limpiar tracking cuando termine
-        if percentage >= 100:
-            if upload_key in upload_start_time:
-                del upload_start_time[upload_key]
                 
     except Exception as ex: 
         print(str(ex))
@@ -478,10 +436,6 @@ def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
                 processFile(update,bot,message,file,thread=thread,jdb=jdb)
             else:
                 megadl(update,bot,message,url,file_name,thread,jdb=jdb)
-        
-        # Limpiar tracking cuando termine
-        if file and file in download_start_time:
-            del download_start_time[file]
             
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
             del bot.threads[thread.cancel_id]
@@ -509,10 +463,6 @@ def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
                 if not megadl.stoping:
                     processFile(update,bot,message,file_name,thread=thread)
             pass
-        
-        # Limpiar tracking cuando termine
-        if file_name and file_name in download_start_time:
-            del download_start_time[file_name]
             
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
             del bot.threads[thread.cancel_id]
