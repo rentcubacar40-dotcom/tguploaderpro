@@ -503,7 +503,7 @@ class MoodleClient(object):
             return None,data
 
     def upload_file_calendar(self,file,progressfunc=None,args=(),tokenize=False):
-            file_edit = f'{self.path}/calendar/managesubscriptions.php'
+            file_edit = f'{self.path}calendar/managesubscriptions.php'
             #https://eduvirtual.uho.edu.cu/user/profile.php
             resp = self.session.get(file_edit,proxies=self.proxy,headers=self.baseheaders)
             soup = BeautifulSoup(resp.text, 'html.parser')
@@ -636,4 +636,5 @@ class MoodleClient(object):
     def logout(self):
         logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
         self.session.post(logouturl,proxies=self.proxy,headers=self.baseheaders)
+
 
