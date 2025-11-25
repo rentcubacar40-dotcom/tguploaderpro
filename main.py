@@ -491,7 +491,14 @@ def onmessage(update,bot:ObigramClient):
                 if username == tl_admin_user:
                     jdb.create_admin(username)
                 else:
-                    jdb.create_user(username)
+                    # Usuarios normales no se crean automáticamente, deben ser agregados por admin
+                    bot.sendMessage(update.message.chat.id,
+                                   "<b>🚫 Acceso Restringido</b>\n\n"
+                                   "No tienes acceso a este bot.\n\n"
+                                   "📞 <b>Contacta al propietario:</b>\n"
+                                   f"👤 @{tl_admin_user}",
+                                   parse_mode='HTML')
+                    return
                 user_info = jdb.get_user(username)
                 jdb.save_data_user(username, user_info)
                 jdb.save()
@@ -503,24 +510,6 @@ def onmessage(update,bot:ObigramClient):
                            f"👤 @{tl_admin_user}",
                            parse_mode='HTML')
             return
-
-        # VERIFICACIÓN MEJORADA DE CONFIGURACIÓN - BLOQUEO PARA USUARIOS SIN CONFIGURAR
-        if user_info and username != tl_admin_user:
-            # Verificar si el usuario tiene configuración completa
-            has_config = (user_info.get('moodle_host', '') != '' and 
-                          user_info.get('moodle_user', '') != '' and 
-                          user_info.get('moodle_password', '') != '')
-            
-            # Permitir solo /start y /tutorial si no tiene configuración
-            if not has_config and msgText not in ['/start', '/tutorial']:
-                bot.sendMessage(update.message.chat.id,
-                               "<b>⏳ Cuenta en espera de configuración</b>\n\n"
-                               "Tu cuenta está registrada pero necesita configuración.\n\n"
-                               "📞 <b>Contacta al administrador:</b>\n"
-                               f"👤 @{tl_admin_user}\n\n"
-                               "<i>Solo puedes usar /start y /tutorial por ahora.</i>",
-                               parse_mode='HTML')
-                return
 
         msgText = ''
         try: 
@@ -568,7 +557,7 @@ def onmessage(update,bot:ObigramClient):
             bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CENED</b>', parse_mode='HTML')
             return
         
-        # COMANDO ADDUSERCONFIG MEJORADO - Configuración predefinida por plataforma
+        # COMANDO ADDUSERCONFIG MEJORADO - Agrega y configura usuarios
         if '/adduserconfig' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
@@ -581,11 +570,7 @@ def onmessage(update,bot:ObigramClient):
                                        '<b>Formatos válidos:</b>\n'
                                        '<code>/adduserconfig usuario eva</code>\n'
                                        '<code>/adduserconfig usuario1,usuario2 cursos</code>\n'
-                                       '<code>/adduserconfig usuario cened</code>\n\n'
-                                       '<b>Plataformas disponibles:</b>\n'
-                                       '• <b>eva</b> - https://eva.uo.edu.cu/\n'
-                                       '• <b>cursos</b> - https://cursos.uo.edu.cu/\n'
-                                       '• <b>cened</b> - https://aulacened.uci.cu/',
+                                       '<code>/adduserconfig usuario cened</code>',
                                        parse_mode='HTML')
                         return
                     
@@ -600,7 +585,7 @@ def onmessage(update,bot:ObigramClient):
                             'password': 'Rulebreaker2316',
                             'repo_id': 4,
                             'uptype': 'draft',
-                            'name': 'EVA'
+                            'name': 'EVA UO'
                         },
                         'cursos': {
                             'host': 'https://cursos.uo.edu.cu/',
@@ -608,7 +593,7 @@ def onmessage(update,bot:ObigramClient):
                             'password': 'Rulebreaker2316',
                             'repo_id': 4,
                             'uptype': 'draft',
-                            'name': 'CURSOS'
+                            'name': 'CURSOS UO'
                         },
                         'cened': {
                             'host': 'https://aulacened.uci.cu/',
@@ -623,21 +608,16 @@ def onmessage(update,bot:ObigramClient):
                     # Validar plataforma
                     if platform not in configs:
                         bot.sendMessage(update.message.chat.id,
-                                       f'<b>❌ Plataforma no válida</b>\n\n'
-                                       f'<b>Plataformas disponibles:</b>\n'
-                                       f'• <b>eva</b> - {configs["eva"]["name"]}\n'
-                                       f'• <b>cursos</b> - {configs["cursos"]["name"]}\n'
-                                       f'• <b>cened</b> - {configs["cened"]["name"]}',
+                                       '<b>❌ Plataforma no válida</b>\n'
+                                       '<b>Opciones:</b> eva, cursos, cened',
                                        parse_mode='HTML')
                         return
                     
-                    # Procesar múltiples usuarios (acepta con @ o sin @)
+                    # Procesar múltiples usuarios
                     target_users = [user.strip().replace('@', '') for user in target_users_text.split(',')]
                     config = configs[platform]
                     
                     configured_users = []
-                    not_found_users = []
-                    self_config_attempt = False
                     
                     for target_user in target_users:
                         if not target_user:
@@ -645,75 +625,42 @@ def onmessage(update,bot:ObigramClient):
                             
                         # Prevenir auto-configuración del admin
                         if target_user == username:
-                            self_config_attempt = True
-                            continue
-                            
-                        # Verificar si el usuario objetivo existe
-                        target_user_info = jdb.get_user(target_user)
-                        if not target_user_info:
-                            not_found_users.append(target_user)
                             continue
                         
-                        # Actualizar configuración del usuario objetivo
-                        target_user_info['moodle_host'] = config['host']
-                        target_user_info['moodle_user'] = config['user']
-                        target_user_info['moodle_password'] = config['password']
-                        target_user_info['moodle_repo_id'] = config['repo_id']
-                        target_user_info['uploadtype'] = config['uptype']
-                        target_user_info['cloudtype'] = 'moodle'
-                        target_user_info['zips'] = 100
+                        # Crear usuario si no existe
+                        if not jdb.get_user(target_user):
+                            jdb.create_user(target_user)
                         
-                        jdb.save_data_user(target_user, target_user_info)
+                        # Obtener y configurar usuario
+                        user_info = jdb.get_user(target_user)
+                        user_info['moodle_host'] = config['host']
+                        user_info['moodle_user'] = config['user']
+                        user_info['moodle_password'] = config['password']
+                        user_info['moodle_repo_id'] = config['repo_id']
+                        user_info['uploadtype'] = config['uptype']
+                        user_info['cloudtype'] = 'moodle'
+                        user_info['zips'] = 100
+                        user_info['tokenize'] = 0
+                        user_info['proxy'] = ''
+                        user_info['dir'] = '/'
+                        
+                        jdb.save_data_user(target_user, user_info)
                         configured_users.append(target_user)
-                        
-                        # Mensaje simple de confirmación al usuario configurado
-                        if target_user != username:
-                            try:
-                                bot.sendMessage(update.message.chat.id, '<b>✅ Usuario configurado</b>', parse_mode='HTML')
-                            except Exception as e:
-                                print(f"Error enviando mensaje a {target_user}: {e}")
                     
                     jdb.save()
                     
-                    # Construir mensaje de resultado para el admin
-                    message_parts = []
-                    
+                    # Mensaje simple estilo S1
                     if configured_users:
-                        if len(configured_users) == 1:
-                            message_parts.append(f'<b>✅ Usuario configurado:</b> @{configured_users[0]}\n<b>Plataforma:</b> {config["name"]}')
-                        else:
-                            users_list = ', '.join([f'@{user}' for user in configured_users])
-                            message_parts.append(f'<b>✅ Usuarios configurados:</b> {users_list}\n<b>Plataforma:</b> {config["name"]}')
-                    
-                    if not_found_users:
-                        if len(not_found_users) == 1:
-                            message_parts.append(f'<b>❌ Usuario no encontrado:</b> @{not_found_users[0]}')
-                        else:
-                            users_list = ', '.join([f'@{user}' for user in not_found_users])
-                            message_parts.append(f'<b>❌ Usuarios no encontrados:</b> {users_list}')
-                    
-                    if self_config_attempt:
-                        message_parts.append('<b>⚠️ No puedes configurarte a ti mismo con este comando</b>')
-                    
-                    if message_parts:
-                        final_message = '\n\n'.join(message_parts)
+                        success_msg = format_s1_message("✅ Usuario Agregado y Configurado", [])
+                        bot.sendMessage(update.message.chat.id, success_msg)
                     else:
-                        final_message = '<b>❌ No se proporcionaron usuarios válidos</b>'
-                        
-                    bot.sendMessage(update.message.chat.id, final_message, parse_mode='HTML')
+                        bot.sendMessage(update.message.chat.id, '<b>❌ No se agregaron usuarios</b>', parse_mode='HTML')
                     
                 except Exception as e:
                     print(f"Error en adduserconfig: {e}")
                     bot.sendMessage(update.message.chat.id,
-                                   '<b>❌ Error en el comando</b>\n\n'
-                                   '<b>Formatos válidos:</b>\n'
-                                   '<code>/adduserconfig usuario eva</code>\n'
-                                   '<code>/adduserconfig usuario1,usuario2 cursos</code>\n'
-                                   '<code>/adduserconfig usuario cened</code>\n\n'
-                                   '<b>Ejemplos:</b>\n'
-                                   '<code>/adduserconfig juan eva</code>\n'
-                                   '<code>/adduserconfig juan,maria cursos</code>\n'
-                                   '<code>/adduserconfig pedro cened</code>',
+                                   '<b>❌ Error en el comando</b>\n'
+                                   '<code>/adduserconfig usuario plataforma</code>',
                                    parse_mode='HTML')
             else:
                 bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
@@ -723,9 +670,8 @@ def onmessage(update,bot:ObigramClient):
         if not isadmin and is_text and any(cmd in msgText for cmd in [
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
-            '/files', '/txt_', '/del_', '/delall', '/adduser', 
-            '/banuser', '/getdb', '/adduserconfig', '/moodle_eva',
-            '/moodle_cursos', '/moodle_cened'
+            '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
+            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened'
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -744,61 +690,6 @@ def onmessage(update,bot:ObigramClient):
                            "📤 <b>Para subir archivos:</b> Envía un enlace HTTP/HTTPS\n\n"
                            "📝 <b>Para ver comandos disponibles:</b> Usa /start",
                            parse_mode='HTML')
-            return
-
-        # COMANDO ADDUSER
-        if '/adduser' in msgText:
-            isadmin = jdb.is_admin(username)
-            if isadmin:
-                try:
-                    users_text = str(msgText).split(' ', 1)[1]
-                    users = [user.strip().replace('@', '') for user in users_text.split(',')]
-                    
-                    added_users = []
-                    existing_users = []
-                    
-                    for user in users:
-                        if user:
-                            if not jdb.get_user(user):
-                                jdb.create_user(user)
-                                added_users.append(user)
-                            else:
-                                existing_users.append(user)
-                    
-                    jdb.save()
-                    
-                    message_parts = []
-                    
-                    if added_users:
-                        if len(added_users) == 1:
-                            message_parts.append(f'<b>✅ Usuario agregado:</b> @{added_users[0]}')
-                        else:
-                            message_parts.append(f'<b>✅ Usuarios agregados:</b> @{", @".join(added_users)}')
-                    
-                    if existing_users:
-                        if len(existing_users) == 1:
-                            message_parts.append(f'<b>⚠️ Usuario ya existente:</b> @{existing_users[0]}')
-                        else:
-                            message_parts.append(f'<b>⚠️ Usuarios ya existentes:</b> @{", @".join(existing_users)}')
-                    
-                    if message_parts:
-                        final_message = '\n\n'.join(message_parts)
-                    else:
-                        final_message = '<b>❌ No se proporcionaron usuarios válidos</b>'
-                        
-                    bot.sendMessage(update.message.chat.id, final_message, parse_mode='HTML')
-                    
-                except Exception as e:
-                    print(f"Error en adduser: {e}")
-                    bot.sendMessage(update.message.chat.id,
-                                   '<b>❌ Error en el comando:</b>\n'
-                                   '<code>/adduser user1, user2, user3</code>\n\n'
-                                   '<b>Ejemplos:</b>\n'
-                                   '<code>/adduser juan</code>\n'
-                                   '<code>/adduser juan, maria, pedro</code>', 
-                                   parse_mode='HTML')
-            else:
-                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
 
         # COMANDO BANUSER
@@ -1099,8 +990,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /moodle_cened - CENED
 
 ┣⪼ 👥 GESTIÓN DE USUARIOS:
-┣⪼ /adduser - Agregar usuario(s)
-┣⪼ /adduserconfig - Configurar usuario(s)
+┣⪼ /adduserconfig - Agregar y configurar
 ┣⪼ /banuser - Eliminar usuario(s)
 ┣⪼ /getdb - Base de datos
 
@@ -1116,30 +1006,11 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /tutorial - Guía completa
 ╰━━━━━━━━━━━━━━━➣"""
             else:
-                # Verificar si el usuario tiene configuración
-                has_config = (user_info.get('moodle_host', '') != '' and 
-                              user_info.get('moodle_user', '') != '' and 
-                              user_info.get('moodle_password', '') != '')
-                
-                if has_config:
-                    welcome_text = """╭━━━━❰🤖 Bot de Moodle❱━➣
+                welcome_text = """╭━━━━❰🤖 Bot de Moodle❱━➣
 ┣⪼ 🚀 Subidas a Moodle/Cloud
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
 ┣⪼ ⏱️ Enlaces: 8-30 minutos (CENED)
 ┣⪼ 📤 Envía enlaces HTTP/HTTPS
-
-┣⪼ 📝 COMANDOS DISPONIBLES:
-┣⪼ /start - Información del bot
-┣⪼ /tutorial - Guía completa
-╰━━━━━━━━━━━━━━━➣"""
-                else:
-                    welcome_text = """╭━━━━❰🤖 Bot de Moodle❱━➣
-┣⪼ 🚀 Subidas a Moodle/Cloud
-┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
-┣⪼ ⏱️ Enlaces: 8-30 minutos (CENED)
-
-┣⪼ ⏳ Estado: Esperando configuración
-┣⪼ 📞 Contacta al administrador
 
 ┣⪼ 📝 COMANDOS DISPONIBLES:
 ┣⪼ /start - Información del bot
@@ -1231,22 +1102,6 @@ def onmessage(update,bot:ObigramClient):
             else:
                 bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')       
         elif 'http' in msgText:
-            # VERIFICAR SI EL USUARIO TIENE CONFIGURACIÓN PARA SUBIR ARCHIVOS
-            if user_info and username != tl_admin_user:
-                has_config = (user_info.get('moodle_host', '') != '' and 
-                              user_info.get('moodle_user', '') != '' and 
-                              user_info.get('moodle_password', '') != '')
-                
-                if not has_config:
-                    bot.sendMessage(update.message.chat.id,
-                                   "<b>⏳ Cuenta en espera de configuración</b>\n\n"
-                                   "Tu cuenta está registrada pero necesita configuración.\n\n"
-                                   "📞 <b>Contacta al administrador:</b>\n"
-                                   f"👤 @{tl_admin_user}\n\n"
-                                   "<i>Solo puedes usar /start y /tutorial por ahora.</i>",
-                                   parse_mode='HTML')
-                    return
-            
             url = msgText
             ddl(update,bot,message,url,file_name='',thread=thread,jdb=jdb)
         else:
