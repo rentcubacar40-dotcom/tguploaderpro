@@ -73,10 +73,18 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        if speed > 0 and totalBits > 0:
-            remaining_bits = totalBits - currentBits
-            eta_seconds = remaining_bits / speed
-            eta_formatted = format_time(eta_seconds)
+        # TIEMPO ESTIMADO BASADO EN PORCENTAJE (NUEVO CÁLCULO)
+        if percentage > 0 and percentage < 100:
+            elapsed_time = time
+            if elapsed_time > 0:
+                percentage_per_second = percentage / elapsed_time
+                if percentage_per_second > 0:
+                    remaining_time = (100 - percentage) / percentage_per_second
+                    eta_formatted = format_time(remaining_time)
+                else:
+                    eta_formatted = "Calculando..."
+            else:
+                eta_formatted = "Calculando..."
         else:
             eta_formatted = "00:00"
         
@@ -116,10 +124,18 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        if speed > 0 and totalBits > 0:
-            remaining_bits = totalBits - currentBits
-            eta_seconds = remaining_bits / speed
-            eta_formatted = format_time(eta_seconds)
+        # TIEMPO ESTIMADO BASADO EN PORCENTAJE (NUEVO CÁLCULO)
+        if percentage > 0 and percentage < 100:
+            elapsed_time = time
+            if elapsed_time > 0:
+                percentage_per_second = percentage / elapsed_time
+                if percentage_per_second > 0:
+                    remaining_time = (100 - percentage) / percentage_per_second
+                    eta_formatted = format_time(remaining_time)
+                else:
+                    eta_formatted = "Calculando..."
+            else:
+                eta_formatted = "Calculando..."
         else:
             eta_formatted = "00:00"
         
@@ -279,7 +295,15 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         file_size = get_file_size(file)
         username = update.message.sender.username
         getUser = jdb.get_user(username)
-        max_file_size = 1024 * 1024 * getUser['zips']
+        
+        # CONFIGURAR ZIPS SEGÚN PLATAFORMA
+        if getUser['moodle_host'] == 'https://eva.uo.edu.cu/':
+            max_file_size = 1024 * 1024 * 99  # 99 MB para EVA
+        elif getUser['moodle_host'] == 'https://cursos.uo.edu.cu/':
+            max_file_size = 1024 * 1024 * 99  # 99 MB para CURSOS
+        else:
+            max_file_size = 1024 * 1024 * getUser['zips']  # 100 MB para CENED por defecto
+            
         file_upload_count = 0
         client = None
         findex = 0
@@ -474,6 +498,17 @@ def sendTxt(name,files,update,bot):
         except:
             pass
 
+def get_platform_name(host):
+    """Obtiene el nombre de la plataforma basado en el host"""
+    if 'eva.uo.edu.cu' in host:
+        return 'EVA UO'
+    elif 'cursos.uo.edu.cu' in host:
+        return 'CURSOS UO'
+    elif 'aulacened.uci.cu' in host:
+        return 'CENED'
+    else:
+        return 'Personalizada'
+
 def onmessage(update,bot:ObigramClient):
     try:
         thread = bot.this_thread
@@ -528,6 +563,7 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_repo_id'] = 4
             user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
+            user_info['zips'] = 99  # 99 MB para EVA
             jdb.save_data_user(username, user_info)
             jdb.save()
             bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para EVA</b>', parse_mode='HTML')
@@ -540,6 +576,7 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_repo_id'] = 4
             user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
+            user_info['zips'] = 99  # 99 MB para CURSOS
             jdb.save_data_user(username, user_info)
             jdb.save()
             bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CURSOS</b>', parse_mode='HTML')
@@ -552,6 +589,7 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_repo_id'] = 5
             user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
+            user_info['zips'] = 100  # 100 MB para CENED
             jdb.save_data_user(username, user_info)
             jdb.save()
             bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CENED</b>', parse_mode='HTML')
@@ -585,7 +623,8 @@ def onmessage(update,bot:ObigramClient):
                             'password': 'Rulebreaker2316',
                             'repo_id': 4,
                             'uptype': 'draft',
-                            'name': 'EVA UO'
+                            'name': 'EVA UO',
+                            'zips': 99  # 99 MB para EVA
                         },
                         'cursos': {
                             'host': 'https://cursos.uo.edu.cu/',
@@ -593,7 +632,8 @@ def onmessage(update,bot:ObigramClient):
                             'password': 'Rulebreaker2316',
                             'repo_id': 4,
                             'uptype': 'draft',
-                            'name': 'CURSOS UO'
+                            'name': 'CURSOS UO',
+                            'zips': 99  # 99 MB para CURSOS
                         },
                         'cened': {
                             'host': 'https://aulacened.uci.cu/',
@@ -601,7 +641,8 @@ def onmessage(update,bot:ObigramClient):
                             'password': 'ElielThali2115.',
                             'repo_id': 5,
                             'uptype': 'draft',
-                            'name': 'CENED'
+                            'name': 'CENED',
+                            'zips': 100  # 100 MB para CENED
                         }
                     }
                     
@@ -613,8 +654,16 @@ def onmessage(update,bot:ObigramClient):
                                        parse_mode='HTML')
                         return
                     
-                    # Procesar múltiples usuarios
-                    target_users = [user.strip().replace('@', '') for user in target_users_text.split(',')]
+                    # Procesar múltiples usuarios (con @ o sin @)
+                    raw_users = [user.strip() for user in target_users_text.split(',')]
+                    target_users = []
+                    for user in raw_users:
+                        if user:
+                            # Agregar @ si no lo tiene
+                            if not user.startswith('@'):
+                                user = '@' + user
+                            target_users.append(user)
+                    
                     config = configs[platform]
                     
                     configured_users = []
@@ -624,27 +673,27 @@ def onmessage(update,bot:ObigramClient):
                             continue
                             
                         # Prevenir auto-configuración del admin
-                        if target_user == username:
+                        if target_user == f'@{username}':
                             continue
                         
                         # Crear usuario si no existe
-                        if not jdb.get_user(target_user):
-                            jdb.create_user(target_user)
+                        if not jdb.get_user(target_user.replace('@', '')):
+                            jdb.create_user(target_user.replace('@', ''))
                         
                         # Obtener y configurar usuario
-                        user_info = jdb.get_user(target_user)
+                        user_info = jdb.get_user(target_user.replace('@', ''))
                         user_info['moodle_host'] = config['host']
                         user_info['moodle_user'] = config['user']
                         user_info['moodle_password'] = config['password']
                         user_info['moodle_repo_id'] = config['repo_id']
                         user_info['uploadtype'] = config['uptype']
                         user_info['cloudtype'] = 'moodle'
-                        user_info['zips'] = 100
+                        user_info['zips'] = config['zips']  # Zips específicos por plataforma
                         user_info['tokenize'] = 0
                         user_info['proxy'] = ''
                         user_info['dir'] = '/'
                         
-                        jdb.save_data_user(target_user, user_info)
+                        jdb.save_data_user(target_user.replace('@', ''), user_info)
                         configured_users.append(target_user)
                     
                     jdb.save()
@@ -698,22 +747,31 @@ def onmessage(update,bot:ObigramClient):
             if isadmin:
                 try:
                     users_text = str(msgText).split(' ', 1)[1]
-                    users = [user.strip().replace('@', '') for user in users_text.split(',')]
+                    
+                    # Procesar múltiples usuarios (con @ o sin @)
+                    raw_users = [user.strip() for user in users_text.split(',')]
+                    target_users = []
+                    for user in raw_users:
+                        if user:
+                            # Agregar @ si no lo tiene
+                            if not user.startswith('@'):
+                                user = '@' + user
+                            target_users.append(user)
                     
                     banned_users = []
                     not_found_users = []
                     self_ban_attempt = False
                     
-                    for user in users:
-                        if user:
-                            if user == username:
+                    for target_user in target_users:
+                        if target_user:
+                            if target_user == f'@{username}':
                                 self_ban_attempt = True
                                 continue
-                            if jdb.get_user(user):
-                                jdb.remove(user)
-                                banned_users.append(user)
+                            if jdb.get_user(target_user.replace('@', '')):
+                                jdb.remove(target_user.replace('@', ''))
+                                banned_users.append(target_user)
                             else:
-                                not_found_users.append(user)
+                                not_found_users.append(target_user)
                     
                     jdb.save()
                     
@@ -721,15 +779,17 @@ def onmessage(update,bot:ObigramClient):
                     
                     if banned_users:
                         if len(banned_users) == 1:
-                            message_parts.append(f'<b>🚫 Usuario baneado:</b> @{banned_users[0]}')
+                            message_parts.append(f'<b>🚫 Usuario baneado:</b> {banned_users[0]}')
                         else:
-                            message_parts.append(f'<b>🚫 Usuarios baneados:</b> @{", @".join(banned_users)}')
+                            users_list = ', '.join(banned_users)
+                            message_parts.append(f'<b>🚫 Usuarios baneados:</b> {users_list}')
                     
                     if not_found_users:
                         if len(not_found_users) == 1:
-                            message_parts.append(f'<b>❌ Usuario no encontrado:</b> @{not_found_users[0]}')
+                            message_parts.append(f'<b>❌ Usuario no encontrado:</b> {not_found_users[0]}')
                         else:
-                            message_parts.append(f'<b>❌ Usuarios no encontrados:</b> @{", @".join(not_found_users)}')
+                            users_list = ', '.join(not_found_users)
+                            message_parts.append(f'<b>❌ Usuarios no encontrados:</b> {users_list}')
                     
                     if self_ban_attempt:
                         message_parts.append('<b>⚠️ No puedes banearte a ti mismo</b>')
@@ -977,11 +1037,15 @@ def onmessage(update,bot:ObigramClient):
         thread.store('msg',message)
 
         if '/start' in msgText:
+            # Obtener plataforma actual
+            platform_name = get_platform_name(user_info.get('moodle_host', ''))
+            
             if isadmin:
-                welcome_text = """╭━━━━❰🤖 Bot de Moodle - ADMIN❱━➣
+                welcome_text = f"""╭━━━━❰🤖 Bot de Moodle - ADMIN❱━➣
 ┣⪼ 🚀 Subidas a Moodle/Cloud
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
-┣⪼ ⏱️ Enlaces: 8-30 minutos (CENED)
+┣⪼ 🏫 Plataforma: {platform_name}
+┣⪼ ⏱️ Enlaces: 8-30 minutos
 ┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
 ┣⪼ ⚙️ CONFIGURACIÓN RÁPIDA:
@@ -1006,10 +1070,11 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /tutorial - Guía completa
 ╰━━━━━━━━━━━━━━━➣"""
             else:
-                welcome_text = """╭━━━━❰🤖 Bot de Moodle❱━➣
+                welcome_text = f"""╭━━━━❰🤖 Bot de Moodle❱━➣
 ┣⪼ 🚀 Subidas a Moodle/Cloud
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
-┣⪼ ⏱️ Enlaces: 8-30 minutos (CENED)
+┣⪼ 🏫 Plataforma: {platform_name}
+┣⪼ ⏱️ Enlaces: 8-30 minutos
 ┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
 ┣⪼ 📝 COMANDOS DISPONIBLES:
