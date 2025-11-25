@@ -23,7 +23,7 @@ import socket
 import S5Crypto
 import threading
 
-def create_progress_bar(percentage, bars=10):
+def create_progress_bar(percentage, bars=15):  # Cambiado a 15 elementos
     """Crea barra de progreso estilo S1 con ⬢⬡"""
     filled = int(percentage / 100 * bars)
     empty = bars - filled
@@ -47,13 +47,19 @@ def format_time(seconds):
         secs = int(seconds % 60)
         
         if minutes > 99:  # Si son más de 99 minutos
-            return "99:59+"
+            hours = minutes // 60
+            remaining_minutes = minutes % 60
+            return f"{hours:02d}:{remaining_minutes:02d}+"
         
         return f"{minutes:02d}:{secs:02d}"
     except:
         return "00:00"
 
-def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
+# Variables globales para tracking de progreso
+download_start_time = {}
+upload_start_time = {}
+
+def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,args):
     try:
         bot = args[0]
         message = args[1]
@@ -62,47 +68,58 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
             downloader.stop()
             return
             
+        # Tracking de tiempo de inicio
+        if filename not in download_start_time:
+            download_start_time[filename] = datetime.datetime.now()
+            start_time = download_start_time[filename]
+        else:
+            start_time = download_start_time[filename]
+        
+        current_time = datetime.datetime.now()
+        elapsed = (current_time - start_time).total_seconds()
+        
         downloadingInfo = ''
         if totalBits == 0:
             percentage = 0
         else:
             percentage = (currentBits / totalBits) * 100
         
-        progress_bar = create_progress_bar(percentage)
+        progress_bar = create_progress_bar(percentage, 15)  # 15 elementos
+        
         total_mb = totalBits / (1024 * 1024)
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        # TIEMPO ESTIMADO BASADO EN PORCENTAJE (NUEVO CÁLCULO)
-        if percentage > 0 and percentage < 100:
-            elapsed_time = time
-            if elapsed_time > 0:
-                percentage_per_second = percentage / elapsed_time
-                if percentage_per_second > 0:
-                    remaining_time = (100 - percentage) / percentage_per_second
-                    eta_formatted = format_time(remaining_time)
-                else:
-                    eta_formatted = "Calculando..."
+        # MEJOR CÁLCULO DE TIEMPO ESTIMADO
+        if percentage > 0 and elapsed > 0:
+            # Calcular velocidad promedio
+            average_speed = currentBits / elapsed if elapsed > 0 else 0
+            
+            if average_speed > 0 and totalBits > currentBits:
+                remaining_bits = totalBits - currentBits
+                remaining_time = remaining_bits / average_speed
+                eta_formatted = format_time(remaining_time)
             else:
                 eta_formatted = "Calculando..."
         else:
-            eta_formatted = "00:00"
+            eta_formatted = "Calculando..."
         
         downloadingInfo = format_s1_message("📥 Descargando", [
             f"[{progress_bar}]",
             f"✅ Progreso: {percentage:.1f}%",
-            f"📦 Tamaño: {current_mb:.2f}/{total_mb:.2f} MB",
-            f"⚡ Velocidad: {speed_mb:.2f} MB/s",
+            f"📦 Tamaño: {current_mb:.1f}/{total_mb:.1f} MB",
+            f"⚡ Velocidad: {speed_mb:.1f} MB/s",
             f"⏳ Tiempo: {eta_formatted}",
             f"🚫 Cancelar: /cancel_{thread.cancel_id}"
         ])
             
         bot.editMessageText(message, downloadingInfo)
+        
     except Exception as ex: 
         print(str(ex))
     pass
 
-def uploadFile(filename,currentBits,totalBits,speed,time,args):
+def uploadFile(filename,currentBits,totalBits,speed,time_elapsed,args):
     try:
         bot = args[0]
         message = args[1]
@@ -113,31 +130,42 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
             
         part_info = args[4] if len(args) > 4 else None
         
+        # Tracking de tiempo de inicio
+        upload_key = f"{filename}_{originalfile}" if originalfile else filename
+        if upload_key not in upload_start_time:
+            upload_start_time[upload_key] = datetime.datetime.now()
+            start_time = upload_start_time[upload_key]
+        else:
+            start_time = upload_start_time[upload_key]
+        
+        current_time = datetime.datetime.now()
+        elapsed = (current_time - start_time).total_seconds()
+        
         uploadingInfo = ''
         if totalBits == 0:
             percentage = 0
         else:
             percentage = (currentBits / totalBits) * 100
             
-        progress_bar = create_progress_bar(percentage)
+        progress_bar = create_progress_bar(percentage, 15)  # 15 elementos
+        
         total_mb = totalBits / (1024 * 1024)
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        # TIEMPO ESTIMADO BASADO EN PORCENTAJE (NUEVO CÁLCULO)
-        if percentage > 0 and percentage < 100:
-            elapsed_time = time
-            if elapsed_time > 0:
-                percentage_per_second = percentage / elapsed_time
-                if percentage_per_second > 0:
-                    remaining_time = (100 - percentage) / percentage_per_second
-                    eta_formatted = format_time(remaining_time)
-                else:
-                    eta_formatted = "Calculando..."
+        # MEJOR CÁLCULO DE TIEMPO ESTIMADO
+        if percentage > 0 and elapsed > 0:
+            # Calcular velocidad promedio
+            average_speed = currentBits / elapsed if elapsed > 0 else 0
+            
+            if average_speed > 0 and totalBits > currentBits:
+                remaining_bits = totalBits - currentBits
+                remaining_time = remaining_bits / average_speed
+                eta_formatted = format_time(remaining_time)
             else:
                 eta_formatted = "Calculando..."
         else:
-            eta_formatted = "00:00"
+            eta_formatted = "Calculando..."
         
         file_display = filename
         if part_info:
@@ -149,13 +177,19 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
         uploadingInfo = format_s1_message("📤 Subiendo", [
             f"[{progress_bar}]",
             f"✅ Progreso: {percentage:.1f}%",
-            f"📦 Tamaño: {current_mb:.2f}/{total_mb:.2f} MB",
-            f"⚡ Velocidad: {speed_mb:.2f} MB/s",
+            f"📦 Tamaño: {current_mb:.1f}/{total_mb:.1f} MB",
+            f"⚡ Velocidad: {speed_mb:.1f} MB/s",
             f"⏳ Tiempo: {eta_formatted}",
             f"📄 Archivo: {file_display}"
         ])
             
         bot.editMessageText(message, uploadingInfo)
+        
+        # Limpiar tracking cuando termine
+        if percentage >= 100:
+            if upload_key in upload_start_time:
+                del upload_start_time[upload_key]
+                
     except Exception as ex: 
         print(str(ex))
     pass
@@ -418,6 +452,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                     f"📄 Archivo: {original_filename}",
                     f"📦 Tamaño total: {sizeof_fmt(file_size)}",
                     f"🔗 Enlaces generados: {len(files)}",
+                    f"⏱️ Duración enlaces: 3 días",
                     f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
                 ])
             
@@ -444,6 +479,10 @@ def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
             else:
                 megadl(update,bot,message,url,file_name,thread,jdb=jdb)
         
+        # Limpiar tracking cuando termine
+        if file and file in download_start_time:
+            del download_start_time[file]
+            
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
             del bot.threads[thread.cancel_id]
     except Exception as ex:
@@ -471,6 +510,10 @@ def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
                     processFile(update,bot,message,file_name,thread=thread)
             pass
         
+        # Limpiar tracking cuando termine
+        if file_name and file_name in download_start_time:
+            del download_start_time[file_name]
+            
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
             del bot.threads[thread.cancel_id]
     except Exception as ex:
@@ -858,42 +901,12 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
 
-        # COMANDO TUTORIAL
+        # COMANDO TUTORIAL (LEE DESDE ARCHIVO)
         if '/tutorial' in msgText:
             try:
-                # Tutorial actualizado con nuevas funciones
-                tutorial_content = """╭━━━━❰📚 Tutorial Actualizado❱━➣
-┣⪼ 🚀 BOT DE SUBIDAS AUTOMÁTICAS
-┣⪼ 
-┣⪼ 📥 CÓMO USAR:
-┣⪼ 1. Envía un enlace HTTP/HTTPS
-┣⪼ 2. El bot descargará el archivo
-┣⪼ 3. Se subirá automáticamente
-┣⪼ 4. Recibirás los enlaces
-┣⪼ 
-┣⪼ 🏫 PLATAFORMAS SOPORTADAS:
-┣⪼ • EVA UO - 99 MB por parte
-┣⪼ • CURSOS UO - 99 MB por parte  
-┣⪼ • CENED - 100 MB por parte
-┣⪼ 
-┣⪼ ⏱️ DURACIÓN ENLACES:
-┣⪼ • CENED: 8-30 minutos
-┣⪼ • EVA/CURSOS: Permanentes
-┣⪼ 
-┣⪼ 💾 LÍMITES:
-┣⪼ • Archivos grandes se dividen
-┣⪼ • Compresión automática
-┣⪼ • Múltiples partes si es necesario
-┣⪼ 
-┣⪼ 📋 COMANDOS:
-┣⪼ • /start - Información del bot
-┣⪼ • Enlaces HTTP/HTTPS - Subir archivos
-┣⪼ 
-┣⪼ ⚠️ NOTAS:
-┣⪼ • Solo enlaces directos
-┣⪼ • No requiere configuración
-┣⪼ • Proceso completamente automático
-╰━━━━━━━━━━━━━━━➣"""
+                tuto = open('tuto.txt','r', encoding='utf-8')
+                tutorial_content = tuto.read()
+                tuto.close()
                 bot.sendMessage(update.message.chat.id, tutorial_content)
             except Exception as e:
                 print(f"Error cargando tutorial: {e}")
@@ -1110,7 +1123,7 @@ def onmessage(update,bot:ObigramClient):
             if platform_name == 'CENED':
                 duration_info = "┣⪼ ⏱️ Enlaces: 8-30 minutos\n"
             else:
-                duration_info = "┣⪼ ⏱️ Enlaces: Permanentes\n"
+                duration_info = "┣⪼ ⏱️ Enlaces: 3 días\n"
             
             if isadmin:
                 welcome_text = f"""╭━━━━❰🤖 Bot de Moodle - ADMIN❱━➣
