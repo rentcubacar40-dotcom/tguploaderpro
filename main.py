@@ -401,19 +401,25 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             # Usar el nombre original del archivo
             total_parts = file_upload_count
             
-            if total_parts > 1:
-                finish_title = "✅ Subida Completada"
+            # MENSAJE FINAL SEGÚN PLATAFORMA
+            platform_name = get_platform_name(getUser['moodle_host'])
+            finish_title = "✅ Subida Completada"
+            
+            if platform_name == 'CENED':
+                finishInfo = format_s1_message(finish_title, [
+                    f"📄 Archivo: {original_filename}",
+                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                    f"🔗 Enlaces generados: {len(files)}",
+                    f"⏱️ Duración enlaces: 8-30 minutos",
+                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
+                ])
             else:
-                finish_title = "✅ Subida Completada"
-                
-            # MENSAJE ACTUALIZADO CON 8-30 MINUTOS
-            finishInfo = format_s1_message(finish_title, [
-                f"📄 Archivo: {original_filename}",
-                f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                f"🔗 Enlaces generados: {len(files)}",
-                f"⏱️ Duración enlaces: 8-30 minutos",
-                f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
-            ])
+                finishInfo = format_s1_message(finish_title, [
+                    f"📄 Archivo: {original_filename}",
+                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                    f"🔗 Enlaces generados: {len(files)}",
+                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
+                ])
             
             bot.sendMessage(message.chat.id, finishInfo)
             
@@ -667,6 +673,7 @@ def onmessage(update,bot:ObigramClient):
                     config = configs[platform]
                     
                     configured_users = []
+                    existing_users = []
                     
                     for target_user in target_users:
                         if not target_user:
@@ -676,34 +683,61 @@ def onmessage(update,bot:ObigramClient):
                         if target_user == f'@{username}':
                             continue
                         
-                        # Crear usuario si no existe
-                        if not jdb.get_user(target_user.replace('@', '')):
-                            jdb.create_user(target_user.replace('@', ''))
+                        username_clean = target_user.replace('@', '')
+                        
+                        # Verificar si el usuario ya existe
+                        if jdb.get_user(username_clean):
+                            existing_users.append(target_user)
+                            continue
+                        
+                        # Crear usuario nuevo
+                        jdb.create_user(username_clean)
                         
                         # Obtener y configurar usuario
-                        user_info = jdb.get_user(target_user.replace('@', ''))
-                        user_info['moodle_host'] = config['host']
-                        user_info['moodle_user'] = config['user']
-                        user_info['moodle_password'] = config['password']
-                        user_info['moodle_repo_id'] = config['repo_id']
-                        user_info['uploadtype'] = config['uptype']
-                        user_info['cloudtype'] = 'moodle'
-                        user_info['zips'] = config['zips']  # Zips específicos por plataforma
-                        user_info['tokenize'] = 0
-                        user_info['proxy'] = ''
-                        user_info['dir'] = '/'
+                        new_user_info = jdb.get_user(username_clean)
+                        new_user_info['moodle_host'] = config['host']
+                        new_user_info['moodle_user'] = config['user']
+                        new_user_info['moodle_password'] = config['password']
+                        new_user_info['moodle_repo_id'] = config['repo_id']
+                        new_user_info['uploadtype'] = config['uptype']
+                        new_user_info['cloudtype'] = 'moodle'
+                        new_user_info['zips'] = config['zips']
+                        new_user_info['tokenize'] = 0
+                        new_user_info['proxy'] = ''
+                        new_user_info['dir'] = '/'
                         
-                        jdb.save_data_user(target_user.replace('@', ''), user_info)
+                        jdb.save_data_user(username_clean, new_user_info)
                         configured_users.append(target_user)
                     
                     jdb.save()
                     
-                    # Mensaje simple estilo S1
+                    # Construir mensaje de resultado
+                    message_parts = []
+                    
                     if configured_users:
-                        success_msg = format_s1_message("✅ Usuario Agregado y Configurado", [])
-                        bot.sendMessage(update.message.chat.id, success_msg)
+                        if len(configured_users) == 1:
+                            user_msg = format_s1_message("✅ Usuario Agregado y Configurado", [
+                                f"👤 Usuario: {configured_users[0]}",
+                                f"🏫 Plataforma: {config['name']}"
+                            ])
+                            message_parts.append(user_msg)
+                        else:
+                            users_list = ', '.join(configured_users)
+                            message_parts.append(f'<b>✅ Usuarios agregados y configurados:</b> {users_list}\n<b>Plataforma:</b> {config["name"]}')
+                    
+                    if existing_users:
+                        if len(existing_users) == 1:
+                            message_parts.append(f'<b>⚠️ Usuario ya existente:</b> {existing_users[0]}')
+                        else:
+                            users_list = ', '.join(existing_users)
+                            message_parts.append(f'<b>⚠️ Usuarios ya existentes:</b> {users_list}')
+                    
+                    if message_parts:
+                        final_message = '\n\n'.join(message_parts)
                     else:
-                        bot.sendMessage(update.message.chat.id, '<b>❌ No se agregaron usuarios</b>', parse_mode='HTML')
+                        final_message = '<b>❌ No se agregaron usuarios</b>'
+                        
+                    bot.sendMessage(update.message.chat.id, final_message, parse_mode='HTML')
                     
                 except Exception as e:
                     print(f"Error en adduserconfig: {e}")
@@ -767,8 +801,9 @@ def onmessage(update,bot:ObigramClient):
                             if target_user == f'@{username}':
                                 self_ban_attempt = True
                                 continue
-                            if jdb.get_user(target_user.replace('@', '')):
-                                jdb.remove(target_user.replace('@', ''))
+                            username_clean = target_user.replace('@', '')
+                            if jdb.get_user(username_clean):
+                                jdb.remove(username_clean)
                                 banned_users.append(target_user)
                             else:
                                 not_found_users.append(target_user)
@@ -826,9 +861,39 @@ def onmessage(update,bot:ObigramClient):
         # COMANDO TUTORIAL
         if '/tutorial' in msgText:
             try:
-                tuto = open('tuto.txt','r', encoding='utf-8')
-                tutorial_content = tuto.read()
-                tuto.close()
+                # Tutorial actualizado con nuevas funciones
+                tutorial_content = """╭━━━━❰📚 Tutorial Actualizado❱━➣
+┣⪼ 🚀 BOT DE SUBIDAS AUTOMÁTICAS
+┣⪼ 
+┣⪼ 📥 CÓMO USAR:
+┣⪼ 1. Envía un enlace HTTP/HTTPS
+┣⪼ 2. El bot descargará el archivo
+┣⪼ 3. Se subirá automáticamente
+┣⪼ 4. Recibirás los enlaces
+┣⪼ 
+┣⪼ 🏫 PLATAFORMAS SOPORTADAS:
+┣⪼ • EVA UO - 99 MB por parte
+┣⪼ • CURSOS UO - 99 MB por parte  
+┣⪼ • CENED - 100 MB por parte
+┣⪼ 
+┣⪼ ⏱️ DURACIÓN ENLACES:
+┣⪼ • CENED: 8-30 minutos
+┣⪼ • EVA/CURSOS: Permanentes
+┣⪼ 
+┣⪼ 💾 LÍMITES:
+┣⪼ • Archivos grandes se dividen
+┣⪼ • Compresión automática
+┣⪼ • Múltiples partes si es necesario
+┣⪼ 
+┣⪼ 📋 COMANDOS:
+┣⪼ • /start - Información del bot
+┣⪼ • Enlaces HTTP/HTTPS - Subir archivos
+┣⪼ 
+┣⪼ ⚠️ NOTAS:
+┣⪼ • Solo enlaces directos
+┣⪼ • No requiere configuración
+┣⪼ • Proceso completamente automático
+╰━━━━━━━━━━━━━━━➣"""
                 bot.sendMessage(update.message.chat.id, tutorial_content)
             except Exception as e:
                 print(f"Error cargando tutorial: {e}")
@@ -1040,13 +1105,19 @@ def onmessage(update,bot:ObigramClient):
             # Obtener plataforma actual
             platform_name = get_platform_name(user_info.get('moodle_host', ''))
             
+            # Mensaje según plataforma para duración de enlaces
+            duration_info = ""
+            if platform_name == 'CENED':
+                duration_info = "┣⪼ ⏱️ Enlaces: 8-30 minutos\n"
+            else:
+                duration_info = "┣⪼ ⏱️ Enlaces: Permanentes\n"
+            
             if isadmin:
                 welcome_text = f"""╭━━━━❰🤖 Bot de Moodle - ADMIN❱━➣
 ┣⪼ 🚀 Subidas a Moodle/Cloud
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
 ┣⪼ 🏫 Plataforma: {platform_name}
-┣⪼ ⏱️ Enlaces: 8-30 minutos
-┣⪼ 📤 Envía enlaces HTTP/HTTPS
+{duration_info}┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
 ┣⪼ ⚙️ CONFIGURACIÓN RÁPIDA:
 ┣⪼ /moodle_eva - EVA
@@ -1074,8 +1145,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ 🚀 Subidas a Moodle/Cloud
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
 ┣⪼ 🏫 Plataforma: {platform_name}
-┣⪼ ⏱️ Enlaces: 8-30 minutos
-┣⪼ 📤 Envía enlaces HTTP/HTTPS
+{duration_info}┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
 ┣⪼ 📝 COMANDOS DISPONIBLES:
 ┣⪼ /start - Información del bot
