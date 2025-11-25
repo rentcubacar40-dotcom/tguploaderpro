@@ -593,7 +593,7 @@ class MoodleClient(object):
                 data['url'] = self.host_tokenize + S5Crypto.encrypt(data['url']) + '/' + self.userdata['s5token']
         return None, data
 
-    # 🆕 NUEVO MÉTODO MÁS ROBUSTO PARA CALENDARIO
+     
     def upload_file_calendar_direct(self, file, progressfunc=None, args=(), tokenize=False):
     """Sube archivos directamente al calendario usando API - MÁS ROBUSTO"""
         try:
@@ -789,5 +789,6 @@ class MoodleClient(object):
     def logout(self):
         logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
         self.session.post(logouturl, proxies=self.proxy, headers=self.baseheaders)
+
 
 
