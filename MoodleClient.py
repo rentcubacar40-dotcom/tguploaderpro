@@ -15,35 +15,32 @@ from ProxyCloud import ProxyCloud
 import socket
 import socks
 import asyncio
-
 import threading
-
 import S5Crypto
 
-
 class CallingUpload:
-                def __init__(self, func,filename,args):
-                    self.func = func
-                    self.args = args
-                    self.filename = filename
-                    self.time_start = time.time()
-                    self.time_total = 0
-                    self.speed = 0
-                    self.last_read_byte = 0
-                def __call__(self,monitor):
-                    try:
-                        self.speed += monitor.bytes_read - self.last_read_byte
-                        self.last_read_byte = monitor.bytes_read
-                        tcurrent = time.time() - self.time_start
-                        self.time_total += tcurrent
-                        self.time_start = time.time()
-                        if self.time_total>=1:
-                                clock_time = (monitor.len - monitor.bytes_read) / (self.speed)
-                                if self.func:
-                                    self.func(self.filename,monitor.bytes_read,monitor.len,self.speed,clock_time,self.args)
-                                self.time_total = 0
-                                self.speed = 0
-                    except:pass
+    def __init__(self, func,filename,args):
+        self.func = func
+        self.args = args
+        self.filename = filename
+        self.time_start = time.time()
+        self.time_total = 0
+        self.speed = 0
+        self.last_read_byte = 0
+    def __call__(self,monitor):
+        try:
+            self.speed += monitor.bytes_read - self.last_read_byte
+            self.last_read_byte = monitor.bytes_read
+            tcurrent = time.time() - self.time_start
+            self.time_total += tcurrent
+            self.time_start = time.time()
+            if self.time_total>=1:
+                clock_time = (monitor.len - monitor.bytes_read) / (self.speed)
+                if self.func:
+                    self.func(self.filename,monitor.bytes_read,monitor.len,self.speed,clock_time,self.args)
+                self.time_total = 0
+                self.speed = 0
+        except:pass
 
 class MoodleClient(object):
     def __init__(self, user,passw,host='',repo_id=4,proxy:ProxyCloud=None):
@@ -141,8 +138,6 @@ class MoodleClient(object):
         sesskey  =  self.sesskey
         files = self.extractQuery(soup.find('object')['data'])['itemid']
 
-
-
         saveevidence = self.path + 'admin/tool/lp/user_evidence_edit.php?id=&userid='+self.userid+'&return='
         payload = {'userid':self.userid,
                    'sesskey':sesskey,
@@ -158,30 +153,34 @@ class MoodleClient(object):
 
         return {'name':name,'desc':desc,'id':evidenceid,'url':resp.url,'files':[]}
 
-    def createBlog(self,name,itemid,desc="<p+dir=\"ltr\"+style=\"text-align:+left;\">asd<br></p>"):
-        post_attach = f'{self.path}blog/edit.php?action=add&userid='+self.userid
-        resp = self.session.get(post_attach,proxies=self.proxy,headers=self.baseheaders)
-        soup = BeautifulSoup(resp.text,'html.parser') 
-        attachment_filemanager = soup.find('input',{'id':'id_attachment_filemanager'})['value']
-        post_url = f'{self.path}blog/edit.php'
-        payload = {'action':'add',
-                   'entryid':'',
-                   'modid':0,
-                   'courseid':0,
-                   'sesskey':self.sesskey,
-                   '_qf__blog_edit_form':1,
-                   'mform_isexpanded_id_general':1,
-                   'mform_isexpanded_id_tagshdr':1,
-                   'subject':name,
-                   'summary_editor[text]':desc,
-                   'summary_editor[format]':1,
-                   'summary_editor[itemid]':itemid,
-                   'attachment_filemanager':attachment_filemanager,
-                   'publishstate':'site',
-                   'tags':'_qf__force_multiselect_submission',
-                   'submitbutton':'Guardar+cambios'}
-        resp = self.session.post(post_url,data=payload,proxies=self.proxy,headers=self.baseheaders)
-        return resp
+    def createBlog(self,name,itemid,desc="<p>Archivo subido mediante bot</p>"):
+        try:
+            post_attach = f'{self.path}blog/edit.php?action=add&userid='+self.userid
+            resp = self.session.get(post_attach,proxies=self.proxy,headers=self.baseheaders)
+            soup = BeautifulSoup(resp.text,'html.parser') 
+            attachment_filemanager = soup.find('input',{'id':'id_attachment_filemanager'})['value']
+            post_url = f'{self.path}blog/edit.php'
+            payload = {'action':'add',
+                       'entryid':'',
+                       'modid':0,
+                       'courseid':0,
+                       'sesskey':self.sesskey,
+                       '_qf__blog_edit_form':1,
+                       'mform_isexpanded_id_general':1,
+                       'mform_isexpanded_id_tagshdr':1,
+                       'subject':name,
+                       'summary_editor[text]':desc,
+                       'summary_editor[format]':1,
+                       'summary_editor[itemid]':itemid,
+                       'attachment_filemanager':attachment_filemanager,
+                       'publishstate':'site',
+                       'tags':'_qf__force_multiselect_submission',
+                       'submitbutton':'Guardar+cambios'}
+            resp = self.session.post(post_url,data=payload,proxies=self.proxy,headers=self.baseheaders)
+            return resp
+        except Exception as e:
+            print(f"Error en createBlog: {e}")
+            return None
 
     def createNewEvent(self,filedata):
         eventposturl = f'{self.path}lib/ajax/service.php?sesskey='+self.sesskey+'&info=core_calendar_submit_create_update_form'
@@ -190,7 +189,6 @@ class MoodleClient(object):
         resp = self.session.post(eventposturl,json=jsondata,headers=self.baseheaders)
         data = json.loads(resp.text)
         return data
-
 
     def saveEvidence(self,evidence):
         evidenceurl = self.path + 'admin/tool/lp/user_evidence_edit.php?id='+evidence['id']+'&userid='+self.userid+'&return=list'
@@ -244,8 +242,6 @@ class MoodleClient(object):
         headers = {'Content-type': 'application/json', 'Accept': 'application/json, text/javascript, */*; q=0.01',**self.baseheaders}
         resp = self.session.post(deleteUrl, json=savejson,headers=headers,proxies=self.proxy)
         pass
-
-
 
     def upload_file(self,file,evidence=None,itemid=None,progressfunc=None,args=(),tokenize=False):
         try:
@@ -315,99 +311,91 @@ class MoodleClient(object):
         except:
             return None,None
 
-    def upload_file_blog(self, file, blog=None, itemid=None, progressfunc=None, args=(), tokenize=False):
-    try:
-        fileurl = self.path + 'blog/edit.php?action=add&userid=' + self.userid
-        resp = self.session.get(fileurl, proxies=self.proxy, headers=self.baseheaders)
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        sesskey = self.sesskey
-        if self.sesskey == '':
-            sesskey = soup.find('input', attrs={'name': 'sesskey'})['value']
-        
-        query = self.extractQuery(soup.find('object', attrs={'type': 'text/html'})['data'])
-        client_id = self.getclientid(resp.text)
-        
-        itempostid = query['itemid']
-        if itemid:
-            itempostid = itemid
-
-        of = open(file, 'rb')
-        b = uuid.uuid4().hex
+    def upload_file_blog(self,file,blog=None,itemid=None,progressfunc=None,args=(),tokenize=False):
         try:
-            areamaxbyttes = query['areamaxbytes']
-            if areamaxbyttes == '0':
+            fileurl = self.path + 'blog/edit.php?action=add&userid=' + self.userid
+            resp = self.session.get(fileurl,proxies=self.proxy,headers=self.baseheaders)
+            soup = BeautifulSoup(resp.text,'html.parser')
+            sesskey = self.sesskey
+            if self.sesskey=='':
+                sesskey  =  soup.find('input',attrs={'name':'sesskey'})['value']
+            _qf__user_files_form = 1
+            query = self.extractQuery(soup.find('object',attrs={'type':'text/html'})['data'])
+            client_id = self.getclientid(resp.text)
+        
+            itempostid = query['itemid']
+            if itemid:
+                itempostid = itemid
+
+            of = open(file,'rb')
+            b = uuid.uuid4().hex
+            try:
+                areamaxbyttes = query['areamaxbytes']
+                if areamaxbyttes=='0':
+                    areamaxbyttes = '-1'
+            except:
                 areamaxbyttes = '-1'
-        except:
-            areamaxbyttes = '-1'
-        
-        upload_data = {
-            'title': (None, ''),
-            'author': (None, 'ObysoftDev'),
-            'license': (None, 'allrightsreserved'),
-            'itemid': (None, itempostid),
-            'repo_id': (None, str(self.repo_id)),
-            'p': (None, ''),
-            'page': (None, ''),
-            'env': (None, query['env']),
-            'sesskey': (None, sesskey),
-            'client_id': (None, client_id),
-            'maxbytes': (None, query['maxbytes']),
-            'areamaxbytes': (None, areamaxbyttes),
-            'ctx_id': (None, query['ctx_id']),
-            'savepath': (None, '/')
-        }
-        upload_file = {
-            'repo_upload_file': (file, of, 'application/octet-stream'),
-            **upload_data
-        }
-        
-        post_file_url = self.path + 'repository/repository_ajax.php?action=upload'
-        encoder = rt.MultipartEncoder(upload_file, boundary=b)
-        progrescall = CallingUpload(progressfunc, file, args)
-        callback = partial(progrescall)
-        monitor = MultipartEncoderMonitor(encoder, callback=callback)
-        resp2 = self.session.post(post_file_url, data=monitor, 
-                                 headers={"Content-Type": "multipart/form-data; boundary=" + b, **self.baseheaders}, 
-                                 proxies=self.proxy)
-        of.close()
+            upload_data = {
+                'title':(None,''),
+                'author':(None,'ObysoftDev'),
+                'license':(None,'allrightsreserved'),
+                'itemid':(None,itempostid),
+                'repo_id':(None,str(self.repo_id)),
+                'p':(None,''),
+                'page':(None,''),
+                'env':(None,query['env']),
+                'sesskey':(None,sesskey),
+                'client_id':(None,client_id),
+                'maxbytes':(None,query['maxbytes']),
+                'areamaxbytes':(None,areamaxbyttes),
+                'ctx_id':(None,query['ctx_id']),
+                'savepath':(None,'/')}
+            upload_file = {
+                'repo_upload_file':(file,of,'application/octet-stream'),
+                **upload_data
+                }
+            post_file_url = self.path+'repository/repository_ajax.php?action=upload'
+            encoder = rt.MultipartEncoder(upload_file,boundary=b)
+            progrescall = CallingUpload(progressfunc,file,args)
+            callback = partial(progrescall)
+            monitor = MultipartEncoderMonitor(encoder,callback=callback)
+            resp2 = self.session.post(post_file_url,data=monitor,headers={"Content-Type": "multipart/form-data; boundary="+b,**self.baseheaders},proxies=self.proxy)
+            of.close()
 
-        data = self.parsejson(resp2.text)
-        data['url'] = str(data['url']).replace('\\', '')
-        data['normalurl'] = data['url']
-        
-        # CORRECCIÓN CLAVE: Crear el enlace específico para BLOG
-        if self.userdata and 'token' in self.userdata:
-            if not tokenize:
-                # Para blog, la estructura es: /blog/attachment/[itemid]/[filename]
-                filename = data['file']
-                # Extraer el contextid del query
-                ctx_id = query['ctx_id']
-                
-                # Crear enlace específico para blog
-                blog_url = f"{self.path}webservice/pluginfile.php/{ctx_id}/blog/attachment/{itempostid}/{urllib.parse.quote(filename)}?token={self.userdata['token']}"
-                data['url'] = blog_url
-            else:
-                # Si es tokenize, usar la estructura normal pero marcar como blog
-                data['url'] = self.host_tokenize + S5Crypto.encrypt(data['url']) + '/' + self.userdata['s5token']
-                data['type'] = 'blog'
-        
-        # Crear entrada de blog después de subir el archivo
-        try:
-            blog_entry = self.createBlog(data['file'], itempostid)
-            if blog_entry and blog_entry.status_code == 200:
-                data['blog_created'] = True
+            data = self.parsejson(resp2.text)
+            data['url'] = str(data['url']).replace('\\','')
+            data['normalurl'] = data['url']
+            
+            # CORRECCIÓN CLAVE: Crear enlace específico para BLOG
+            if self.userdata and 'token' in self.userdata:
+                if not tokenize:
+                    # Para blog, usar estructura específica: /blog/attachment/[itemid]/[filename]
+                    filename = data['file']
+                    ctx_id = query['ctx_id']
+                    # Crear enlace específico para blog
+                    blog_url = f"{self.path}webservice/pluginfile.php/{ctx_id}/blog/attachment/{itempostid}/{urllib.parse.quote(filename)}?token={self.userdata['token']}"
+                    data['url'] = blog_url
+                    data['type'] = 'blog'
+                else:
+                    data['url'] = self.host_tokenize + S5Crypto.encrypt(data['url']) + '/' + self.userdata['s5token']
+                    data['type'] = 'blog'
+            
+            # Crear entrada de blog después de subir el archivo
+            try:
+                blog_entry = self.createBlog(data['file'], itempostid)
+                if blog_entry and blog_entry.status_code == 200:
+                    data['blog_created'] = True
+            except Exception as e:
+                print(f"Error creando entrada de blog: {e}")
+                data['blog_created'] = False
+            
+            return itempostid, data
         except Exception as e:
-            print(f"Error creando entrada de blog: {e}")
-            data['blog_created'] = False
-        
-        return itempostid, data
-    except Exception as e:
-        print(f"Error en upload_file_blog: {e}")
-        return None, None
+            print(f"Error en upload_file_blog: {e}")
+            return None, None
 
     def upload_file_perfil(self,file,progressfunc=None,args=(),tokenize=False):
             file_edit = f'{self.path}user/edit.php?id={self.userid}&returnto=profile'
-            #https://eduvirtual.uho.edu.cu/user/profile.php
             resp = self.session.get(file_edit,proxies=self.proxy,headers=self.baseheaders)
             soup = BeautifulSoup(resp.text, 'html.parser')
             sesskey = self.sesskey
@@ -475,7 +463,6 @@ class MoodleClient(object):
 
     def upload_file_draft(self,file,progressfunc=None,args=(),tokenize=False):
             file_edit = f'{self.path}user/files.php'
-            #https://eduvirtual.uho.edu.cu/user/profile.php
             resp = self.session.get(file_edit,proxies=self.proxy,headers=self.baseheaders)
             soup = BeautifulSoup(resp.text, 'html.parser')
             sesskey = self.sesskey
@@ -531,7 +518,6 @@ class MoodleClient(object):
 
     def upload_file_calendar(self,file,progressfunc=None,args=(),tokenize=False):
             file_edit = f'{self.path}/calendar/managesubscriptions.php'
-            #https://eduvirtual.uho.edu.cu/user/profile.php
             resp = self.session.get(file_edit,proxies=self.proxy,headers=self.baseheaders)
             soup = BeautifulSoup(resp.text, 'html.parser')
             sesskey = self.sesskey
@@ -663,5 +649,3 @@ class MoodleClient(object):
     def logout(self):
         logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
         self.session.post(logouturl,proxies=self.proxy,headers=self.baseheaders)
-
-
