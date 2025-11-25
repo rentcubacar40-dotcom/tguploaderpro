@@ -594,10 +594,10 @@ class MoodleClient(object):
         return None, data
 
      
-    def upload_file_calendar_direct(self, file, progressfunc=None, args=(), tokenize=False):
+def upload_file_calendar_direct(self, file, progressfunc=None, args=(), tokenize=False):
     """Sube archivos directamente al calendario usando API - MÁS ROBUSTO"""
-        try:
-            print("🔧 [DEBUG] Iniciando upload_file_calendar_direct...")
+    try:
+        print("🔧 [DEBUG] Iniciando upload_file_calendar_direct...")
         
         # 1. PRIMERO subir el archivo a drafts - IMPORTANTE: tokenize=False
         print("🔧 [DEBUG] Subiendo a draft...")
@@ -608,6 +608,8 @@ class MoodleClient(object):
             return None, None
             
         print(f"✅ [DEBUG] Archivo subido a draft")
+        
+        # ... resto del método igual
         
         # 2. Usar la URL NORMAL (sin webservice) para el calendario
         calendar_url = filedata.get('normalurl', filedata.get('url'))
@@ -789,6 +791,7 @@ class MoodleClient(object):
     def logout(self):
         logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
         self.session.post(logouturl, proxies=self.proxy, headers=self.baseheaders)
+
 
 
 
