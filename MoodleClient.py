@@ -54,6 +54,9 @@ class MoodleClient(object):
         self.repo_id = repo_id
         self.sesskey = ''
         
+        # 🎯 DETECCIÓN DE PLATAFORMA
+        self.platform_type = self._detect_platform()
+        
         # 🚨 CONEXIÓN DIRECTA - Sin proxy
         self.proxy_config = None
         self.current_proxy_url = "DIRECT_CONNECTION"
@@ -67,6 +70,18 @@ class MoodleClient(object):
         
         self.session.headers.update(self.baseheaders)
         self.session.trust_env = False
+
+    def _detect_platform(self):
+        """Detectar tipo de plataforma basado en URL"""
+        host = self.path.lower()
+        if 'eva.uo.edu.cu' in host:
+            return 'eva'
+        elif 'cursos.uo.edu.cu' in host:
+            return 'cursos' 
+        elif 'aulacened.uci.cu' in host:
+            return 'cened'
+        else:
+            return 'generic'
 
     def _make_request(self, method, url, **kwargs):
         """Método simplificado para requests"""
@@ -144,20 +159,42 @@ class MoodleClient(object):
     def getSessKey(self):
         """Obtener clave de sesión"""
         try:
-            fileurl = self.path + 'my/'
+            # 🎯 URL ESPECÍFICA POR PLATAFORMA
+            if self.platform_type in ['eva', 'cursos']:
+                fileurl = self.path + 'user/files.php'
+            else:
+                fileurl = self.path + 'my/'
+                
             resp = self._make_request('GET', fileurl)
             soup = BeautifulSoup(resp.text, 'html.parser')
-            sesskey = soup.find('input', attrs={'name': 'sesskey'})
-            if sesskey:
-                return sesskey['value']
-        except:
-            pass
+            
+            # Buscar sesskey en múltiples ubicaciones
+            sesskey_selectors = [
+                'input[name="sesskey"]',
+                '[name="sesskey"]',
+                'input[name="sesskey"]',
+                '#sesskey'
+            ]
+            
+            for selector in sesskey_selectors:
+                sesskey = soup.select_one(selector)
+                if sesskey and sesskey.get('value'):
+                    return sesskey['value']
+                    
+            # Buscar en scripts
+            script_pattern = r'\"sesskey\"\s*:\s*\"([a-zA-Z0-9]+)\"'
+            matches = re.findall(script_pattern, resp.text)
+            if matches:
+                return matches[0]
+                
+        except Exception as e:
+            print(f"Error getting sesskey: {e}")
         return ''
 
     def login(self):
         """Login simplificado"""
         try:
-            print(f"🔐 Login en: {urllib.parse.urlparse(self.path).hostname}")
+            print(f"🔐 Login en: {urllib.parse.urlparse(self.path).hostname} ({self.platform_type.upper()})")
             
             login_url = self.path + 'login/index.php'
             resp = self._make_request('GET', login_url)
@@ -198,6 +235,10 @@ class MoodleClient(object):
                 self.userdata = self.getUserData()
                 self.sesskey = self.getSessKey()
                 
+                print(f"🎯 Plataforma: {self.platform_type.upper()}")
+                print(f"🔑 SessKey: {self.sesskey}")
+                print(f"👤 UserID: {self.userid}")
+                
                 return True
             else:
                 print("❌ Login fallido")
@@ -211,13 +252,17 @@ class MoodleClient(object):
         """Verificar login exitoso"""
         content_lower = response.text.lower()
         
-        success_indicators = ['dashboard', 'my/home', 'userid']
-        failure_indicators = ['loginerrors', 'invalid login', 'usuario o contraseña incorrectos']
+        success_indicators = ['dashboard', 'my/home', 'userid', 'mis cursos', 'my courses']
+        failure_indicators = ['loginerrors', 'invalid login', 'usuario o contraseña incorrectos', 'invalidusername']
         
         if any(indicator in content_lower for indicator in success_indicators):
             return True
         if any(indicator in content_lower for indicator in failure_indicators):
             return False
+            
+        # Verificar redirección
+        if len(response.history) > 0:
+            return True
             
         return False
 
@@ -227,41 +272,73 @@ class MoodleClient(object):
             soup = BeautifulSoup(html_content, 'html.parser')
             
             # Buscar userid
-            userid_selectors = ['div[data-userid]', 'a[data-userid]', '[data-userid]']
+            userid_selectors = [
+                'div[data-userid]',
+                'a[data-userid]', 
+                '[data-userid]',
+                '.userid',
+                '#userid'
+            ]
             
             for selector in userid_selectors:
                 element = soup.select_one(selector)
                 if element and 'data-userid' in element.attrs:
                     self.userid = element['data-userid']
-                    print(f"👤 UserID: {self.userid}")
                     return
                     
             # Buscar en scripts
-            script_pattern = r'\"userid\"\s*:\s*\"?(\d+)\"?'
-            matches = re.findall(script_pattern, html_content)
-            if matches:
-                self.userid = matches[0]
-                print(f"👤 UserID en script: {self.userid}")
-                
+            script_patterns = [
+                r'\"userid\"\s*:\s*\"?(\d+)\"?',
+                r'M\.cfg\s*=\s*{[^}]*\"userid\"\s*:\s*(\d+)',
+                r'userid["\']?\s*:\s*["\']?(\d+)'
+            ]
+            
+            for pattern in script_patterns:
+                matches = re.findall(pattern, html_content)
+                if matches:
+                    self.userid = matches[0]
+                    return
+                    
         except Exception as e:
             print(f"⚠️ No se pudo extraer userid: {e}")
             self.userid = ''
 
-    def _upload_file_generic(self, file, itemid=None, progressfunc=None, args=(), tokenize=False, upload_type='draft'):
-        """Método principal de upload - SIMPLIFICADO"""
-        try:
-            # URL según tipo
-            if upload_type == 'draft':
-                fileurl = f'{self.path}user/files.php'
-            elif upload_type == 'evidence':
-                fileurl = self.path + 'admin/tool/lp/user_evidence_edit.php?userid=' + self.userid
-            else:
-                fileurl = f'{self.path}user/files.php'
+    def _get_upload_urls(self):
+        """Obtener URLs específicas para upload según plataforma"""
+        if self.platform_type == 'eva':
+            return {
+                'file_page': f'{self.path}user/files.php',
+                'upload_endpoint': f'{self.path}repository/repository_ajax.php?action=upload'
+            }
+        elif self.platform_type == 'cursos':
+            return {
+                'file_page': f'{self.path}user/files.php', 
+                'upload_endpoint': f'{self.path}repository/repository_ajax.php?action=upload'
+            }
+        elif self.platform_type == 'cened':
+            return {
+                'file_page': f'{self.path}user/files.php',
+                'upload_endpoint': f'{self.path}repository/repository_ajax.php?action=upload'
+            }
+        else:
+            return {
+                'file_page': f'{self.path}user/files.php',
+                'upload_endpoint': f'{self.path}repository/repository_ajax.php?action=upload'
+            }
 
-            print(f"📤 Preparando upload a: {upload_type}")
+    def _upload_file_generic(self, file, itemid=None, progressfunc=None, args=(), tokenize=False, upload_type='draft'):
+        """Método principal de upload - MEJORADO"""
+        try:
+            # 🎯 OBTENER URLs ESPECÍFICAS
+            urls = self._get_upload_urls()
+            file_page_url = urls['file_page']
+            upload_endpoint = urls['upload_endpoint']
             
-            # Obtener página
-            resp = self._make_request('GET', fileurl)
+            print(f"📤 Preparando upload a: {self.platform_type.upper()} ({upload_type})")
+            print(f"📄 Archivo: {os.path.basename(file)}")
+            
+            # Obtener página de archivos
+            resp = self._make_request('GET', file_page_url)
             soup = BeautifulSoup(resp.text, 'html.parser')
             
             # Obtener sesskey
@@ -272,12 +349,15 @@ class MoodleClient(object):
                     sesskey = sesskey_input['value']
                 else:
                     sesskey = self.getSessKey()
-            
-            # Extraer parámetros
-            query = self.extractQuery(soup.find('object', attrs={'type': 'text/html'})['data'])
-            client_id = self.getclientid(resp.text)
+                    if not sesskey:
+                        raise Exception("No se pudo obtener sesskey")
 
-            itempostid = query['itemid']
+            # Extraer parámetros del repositorio
+            repo_data = self._extract_repository_data(resp.text)
+            if not repo_data:
+                raise Exception("No se pudieron extraer datos del repositorio")
+            
+            itempostid = repo_data.get('itemid', '')
             if itemid:
                 itempostid = itemid
 
@@ -285,18 +365,18 @@ class MoodleClient(object):
             of = open(file, 'rb')
             boundary = uuid.uuid4().hex
             
-            # Datos del upload
+            # 🎯 DATOS DE UPLOAD MEJORADOS
             upload_data = {
                 'title': (None, ''),
                 'author': (None, 'Academic User'),
                 'license': (None, 'allrightsreserved'),
                 'itemid': (None, itempostid),
                 'repo_id': (None, str(self.repo_id)),
-                'env': (None, query['env']),
+                'env': (None, repo_data.get('env', '')),
                 'sesskey': (None, sesskey),
-                'client_id': (None, client_id),
-                'maxbytes': (None, query['maxbytes']),
-                'ctx_id': (None, query['ctx_id']),
+                'client_id': (None, repo_data.get('client_id', '')),
+                'maxbytes': (None, repo_data.get('maxbytes', '209715200')),
+                'ctx_id': (None, repo_data.get('ctx_id', '')),
                 'savepath': (None, '/')
             }
             
@@ -306,8 +386,6 @@ class MoodleClient(object):
             }
             
             # Realizar upload
-            post_file_url = self.path + 'repository/repository_ajax.php?action=upload'
-            
             encoder = rt.MultipartEncoder(upload_file, boundary=boundary)
             
             # Callback de progreso
@@ -321,34 +399,103 @@ class MoodleClient(object):
             upload_headers = {
                 "Content-Type": "multipart/form-data; boundary=" + boundary,
                 "X-Requested-With": "XMLHttpRequest",
-                "Referer": fileurl
+                "Referer": file_page_url
             }
             
-            resp2 = self._make_request('POST', post_file_url, data=monitor, headers=upload_headers)
+            print(f"🚀 Enviando upload a: {upload_endpoint}")
+            resp2 = self._make_request('POST', upload_endpoint, data=monitor, headers=upload_headers)
             of.close()
 
             # Procesar respuesta
             data = self.parsejson(resp2.text)
+            
+            if not data or 'url' not in data:
+                print(f"❌ Respuesta del servidor: {resp2.text}")
+                raise Exception("Upload falló - respuesta inválida del servidor")
+            
             data['url'] = str(data['url']).replace('\\', '')
             data['normalurl'] = data['url']
             
-            # Aplicar tokenización si es necesario
+            # 🎯 APLICAR WEBSERVICE CORRECTAMENTE
             if self.userdata and 'token' in self.userdata and not tokenize:
-                data['url'] = str(data['url']).replace('pluginfile.php/', 'webservice/pluginfile.php/')
+                if '/pluginfile.php/' in data['url']:
+                    data['url'] = data['url'].replace('/pluginfile.php/', '/webservice/pluginfile.php/')
                 if 'token=' not in data['url']:
-                    data['url'] += '?token=' + self.userdata['token']
+                    data['url'] += ('&' if '?' in data['url'] else '?') + 'token=' + self.userdata['token']
 
-            print(f"✅ Upload exitoso: {data['url']}")
+            print(f"✅ Upload exitoso a {self.platform_type.upper()}")
+            print(f"🔗 URL generada: {data['url'][:100]}...")
+            
             return itempostid, data
             
         except Exception as e:
-            print(f"❌ Error en upload: {e}")
+            print(f"❌ Error en upload a {self.platform_type.upper()}: {e}")
             return None, None
 
-    # 🎯 MÉTODOS PRINCIPALES - SOLO LOS NECESARIOS
+    def _extract_repository_data(self, html_content):
+        """Extraer datos del repositorio mejorado"""
+        try:
+            # Buscar en scripts
+            patterns = [
+                r'M\.cfg\s*=\s*({[^}]+})',
+                r'var\s+repository_upload_data\s*=\s*({[^}]+})',
+                r'repository_upload_data\s*=\s*({[^}]+})'
+            ]
+            
+            for pattern in patterns:
+                matches = re.findall(pattern, html_content)
+                if matches:
+                    try:
+                        data = json.loads(matches[0])
+                        return {
+                            'itemid': str(data.get('itemid', '')),
+                            'env': data.get('env', 'filepicker'),
+                            'client_id': data.get('client_id', ''),
+                            'maxbytes': str(data.get('maxbytes', '209715200')),
+                            'ctx_id': str(data.get('ctx_id', ''))
+                        }
+                    except:
+                        continue
+            
+            # Fallback: extraer de elementos HTML
+            soup = BeautifulSoup(html_content, 'html.parser')
+            filemanager = soup.find('div', {'data-type': 'filemanager'})
+            if filemanager and filemanager.get('data'):
+                try:
+                    data = json.loads(filemanager['data'])
+                    return {
+                        'itemid': str(data.get('itemid', '')),
+                        'env': data.get('env', 'filepicker'),
+                        'client_id': data.get('client_id', ''),
+                        'maxbytes': str(data.get('maxbytes', '209715200')),
+                        'ctx_id': str(data.get('ctx_id', ''))
+                    }
+                except:
+                    pass
+            
+            # Último fallback
+            return {
+                'itemid': str(int(time.time())),
+                'env': 'filepicker',
+                'client_id': 'filepicker',
+                'maxbytes': '209715200',
+                'ctx_id': '1'
+            }
+            
+        except Exception as e:
+            print(f"Error extracting repository data: {e}")
+            return {
+                'itemid': str(int(time.time())),
+                'env': 'filepicker',
+                'client_id': 'filepicker',
+                'maxbytes': '209715200',
+                'ctx_id': '1'
+            }
+
+    # 🎯 MÉTODOS PRINCIPALES - MEJORADOS
     def upload_file_draft(self, file, progressfunc=None, args=(), tokenize=False):
         """Subida a draft - MÉTODO PRINCIPAL"""
-        print(f"📤 Subiendo a DRAFT: {os.path.basename(file)}")
+        print(f"📤 Subiendo a DRAFT en {self.platform_type.upper()}: {os.path.basename(file)}")
         return self._upload_file_generic(
             file=file,
             itemid=None,
@@ -360,7 +507,7 @@ class MoodleClient(object):
 
     def upload_file_evidence(self, file, progressfunc=None, args=(), tokenize=False):
         """Subida a evidence"""
-        print(f"📤 Subiendo a EVIDENCE: {os.path.basename(file)}")
+        print(f"📤 Subiendo a EVIDENCE en {self.platform_type.upper()}: {os.path.basename(file)}")
         return self._upload_file_generic(
             file=file,
             itemid=None,
@@ -383,7 +530,7 @@ class MoodleClient(object):
             if json_text.startswith('{') and json_text.endswith('}'):
                 data = json.loads(json_text)
             else:
-                # Fallback
+                # Fallback para respuestas no estándar
                 tokens = str(json_text).replace('{', '').replace('}', '').split(',')
                 for t in tokens:
                     split = str(t).split(':', 1)
@@ -393,6 +540,11 @@ class MoodleClient(object):
                         data[key] = value
         except Exception as e:
             print(f"Error parsing JSON: {e}")
+            # Intentar extraer URL manualmente
+            if 'url' in json_text.lower():
+                url_match = re.search(r'\"url\"\s*:\s*\"([^\"]+)\"', json_text)
+                if url_match:
+                    data['url'] = url_match.group(1)
         return data
 
     def getclientid(self, html):
@@ -403,7 +555,7 @@ class MoodleClient(object):
             ret = html[index:(index + max_len)]
             return str(ret).replace('client_id":"', '').replace('"', '')
         except:
-            return ''
+            return 'filepicker'
 
     def extractQuery(self, url):
         """Extraer parámetros de query string"""
