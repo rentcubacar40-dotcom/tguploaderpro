@@ -125,7 +125,7 @@ class SmartAcademicBridge:
                             'strategy': 'direct_upload',
                             'platform': target_platform,
                             'url': filedata['url'],
-                            'efficiency': 'high',
+                            'target_url': filedata['url'],  # 🆕 Añadido para consistencia
                             'message': f'✅ Subida directa a {target_platform.upper()}',
                             'success': True,
                             'filedata': filedata
@@ -140,25 +140,25 @@ class SmartAcademicBridge:
             return {'error': f'Subida directa fallida: {str(e)}', 'success': False}
 
     def _execute_mirror_upload(self, file_path, strategy_plan, progressfunc=None, args=()):
-        """Mirror upload - Sube a ambas plataformas (CENED + Target)"""
+        """Mirror upload - MEJORADO para asegurar URLs"""
         try:
             bridge_platform = strategy_plan['bridge_platform']
             target_platform = strategy_plan['target_platform']
             
             print(f"🪞 MIRROR UPLOAD: {bridge_platform.upper()} -> {target_platform.upper()}")
             
-            # 1. Subir a CENED (siempre funciona)
+            # 1. Subir a CENED (bridge)
             bridge_config = self.platforms[bridge_platform]
             bridge_client = MoodleClient(
                 bridge_config['user'],
-                bridge_config['password'],
+                bridge_config['password'], 
                 bridge_config['host'],
                 bridge_config['repo_id']
             )
-            
+        
             bridge_url = None
             bridge_success = False
-            
+        
             if bridge_client.login():
                 print(f"✅ Login exitoso en {bridge_platform.upper()}")
                 bridge_result = bridge_client.upload_file_draft(
@@ -166,71 +166,68 @@ class SmartAcademicBridge:
                     progressfunc=progressfunc,
                     args=args
                 )
-                
+            
                 if bridge_result and len(bridge_result) >= 2:
                     itemid, bridge_filedata = bridge_result
                     if bridge_filedata and 'url' in bridge_filedata:
                         bridge_url = bridge_filedata['url']
                         bridge_success = True
                         print(f"✅ Bridge URL obtenida: {bridge_url}")
-            
-            # 2. Intentar subir a plataforma objetivo
+        
+            # 2. Subir a plataforma objetivo (EVA/CURSOS)
             target_url = None
             target_success = False
             target_config = self.platforms[target_platform]
-            
+        
             target_client = MoodleClient(
                 target_config['user'],
                 target_config['password'],
-                target_config['host'],
+                target_config['host'], 
                 target_config['repo_id']
             )
-            
+        
             if target_client.login():
                 print(f"✅ Login exitoso en {target_platform.upper()}")
-                target_result = target_client.upload_file_draft(file_path)
-                
+                target_result = target_client.upload_file_draft(
+                    file_path,
+                    progressfunc=progressfunc, 
+                    args=args
+                )
+            
                 if target_result and len(target_result) >= 2:
                     target_itemid, target_filedata = target_result
                     if target_filedata and 'url' in target_filedata:
                         target_url = target_filedata['url']
                         target_success = True
-                        print(f"✅ Target URL obtenida: {target_url}")
-            
-            # 🎯 CONSTRUIR RESULTADO
+                        print(f"🎯 Target URL obtenida: {target_url}")
+        
+            # 🎯 CONSTRUIR RESULTADO MEJORADO
             result = {
                 'strategy': 'mirror_upload',
                 'bridge_platform': bridge_platform,
                 'target_platform': target_platform,
                 'bridge_success': bridge_success,
                 'target_success': target_success,
+                'bridge_url': bridge_url,      # 🆕 Asegurar que esté
+                'target_url': target_url,      # 🆕 Asegurar que esté  
                 'efficiency': 'high' if target_success else 'medium',
                 'success': bridge_success or target_success
             }
-            
-            # Añadir URLs disponibles (prioridad: target > bridge)
+        
+            # 🎯 CORRECCIÓN: Asignar URL principal correctamente
             if target_url:
-                result['target_url'] = target_url
-                result['url'] = target_url  # URL principal
-            if bridge_url:
-                result['bridge_url'] = bridge_url
-                if not target_url:  # Si no hay target, usar bridge como principal
-                    result['url'] = bridge_url
-            
-            # Mensaje informativo CORREGIDO
-            if target_success and bridge_success:
-                result['message'] = f'🪞 Espejo completo: {bridge_platform.upper()} + {target_platform.upper()}'
-            elif target_success:
+                result['url'] = target_url  # 🆕 Prioridad a target
                 result['message'] = f'✅ Subida directa a {target_platform.upper()}'
-            elif bridge_success:
+            elif bridge_url:
+                result['url'] = bridge_url   # 🆕 Fallback a bridge
                 result['message'] = f'🌉 Subida via {bridge_platform.upper()} (bridge)'
             else:
                 result['message'] = '❌ Ambas subidas fallaron'
                 result['success'] = False
-            
-            print(f"🎯 Resultado final: {result}")
+        
+            print(f"🎯 Resultado final mejorado: {result}")
             return result
-            
+        
         except Exception as e:
             print(f"❌ Error en mirror_upload: {e}")
             return {
@@ -609,7 +606,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         print(f"Error en processFile: {ex}")
 
 def _process_bridge_results(results, original_filename, file_size, file_upload_count, update, bot, message, user_info):
-    """Procesar resultados de estrategia bridge - VERSIÓN SIMPLIFICADA"""
+    """Procesar resultados de estrategia bridge - CORREGIDO"""
     try:
         if not results:
             bot.editMessageText(message, "❌ No se obtuvieron resultados de subida")
@@ -628,17 +625,17 @@ def _process_bridge_results(results, original_filename, file_size, file_upload_c
             bot.editMessageText(message, error_msg)
             return None
         
-        # Construir mensaje de éxito
-        success_count = len(successful_results)
+        # 🎯 CORRECCIÓN: PRIORIZAR PLATAFORMA OBJETIVO
+        target_platform = user_info.get('moodle_host', '')
+        platform_name = get_platform_name(target_platform)
         
         summary_msg = f"""
-🎯 **Subida Completada**
+🎯 **Subida Completada - {platform_name}**
 
 📊 **Resumen:**
 • 📁 Archivo: {original_filename}
 • 📦 Tamaño: {sizeof_fmt(file_size)}
-• ✅ Subidas exitosas: {success_count}
-• 🎯 Estrategias usadas: {', '.join(set(r.get('strategy', 'desconocida') for r in successful_results))}
+• ✅ Subidas exitosas: {len(successful_results)}
 
 🔗 **Enlaces generados:**"""
         
@@ -648,16 +645,35 @@ def _process_bridge_results(results, original_filename, file_size, file_upload_c
             result_msg += f"\n• 🎯 Método: {result.get('strategy', 'directa')}"
             result_msg += f"\n• 📝 Estado: {result.get('message', 'Completado')}"
             
-            # EXTRACCIÓN SIMPLE DE URL
+            # 🎯 CORRECCIÓN: PRIORIDAD A TARGET_URL SOBRE BRIDGE_URL
             file_url = None
-            if 'url' in result:
-                file_url = result['url']
-            elif 'target_url' in result:
+            target_platform_name = result.get('target_platform', '').upper()
+            bridge_platform_name = result.get('bridge_platform', '').upper()
+            
+            # 1. PRIORIDAD: URL de la plataforma objetivo (EVA/CURSOS)
+            if 'target_url' in result and result['target_url']:
                 file_url = result['target_url']
-            elif 'bridge_url' in result:
+                result_msg += f"\n• 🎯 Plataforma: {target_platform_name}"
+            
+            # 2. FALLBACK: URL del bridge (CENED) - solo si no hay target
+            elif 'bridge_url' in result and result['bridge_url']:
                 file_url = result['bridge_url']
+                result_msg += f"\n• 🌉 Plataforma: {bridge_platform_name} (Bridge)"
+            
+            # 3. ÚLTIMO RESORTE: URL genérica
+            elif 'url' in result and result['url']:
+                file_url = result['url']
+                result_msg += f"\n• 🔄 Plataforma: Genérica"
                 
             if file_url:
+                # 🎯 APLICAR WEBSERVICE SI ES NECESARIO
+                if 'aulacened.uci.cu' in file_url and '/webservice/' not in file_url:
+                    file_url = file_url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
+                elif 'eva.uo.edu.cu' in file_url and '/webservice/' not in file_url:
+                    file_url = file_url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
+                elif 'cursos.uo.edu.cu' in file_url and '/webservice/' not in file_url:
+                    file_url = file_url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
+                
                 result_msg += f"\n• 🔗 URL: {file_url}"
                 all_urls.append({'name': f"{original_filename}", 'directurl': file_url})
             else:
