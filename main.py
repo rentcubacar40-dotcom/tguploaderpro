@@ -1,5 +1,5 @@
-from pyobigram.utils import sizeof_fmt,get_file_size,createID,nice_time
-from pyobigram.client import ObigramClient,inlineQueryResultArticle
+from pyobigram.utils import sizeof_fmt, get_file_size, createID, nice_time
+from pyobigram.client import ObigramClient, inlineQueryResultArticle
 from MoodleClient import MoodleClient
 
 from JDatabase import JsonDatabase
@@ -8,9 +8,6 @@ import os
 import infos
 import xdlink
 import mediafire
-##from megacli.mega import Mega
-#import megacli.megafolder as megaf
-#import megacli.mega
 import datetime
 import time
 import youtube
@@ -23,6 +20,454 @@ import socket
 import S5Crypto
 import threading
 import random
+
+class SmartAcademicBridge:
+    def __init__(self):
+        self.platforms = {
+            'eva': {
+                'host': 'https://eva.uo.edu.cu/',
+                'user': 'eric.serrano',
+                'password': 'Rulebreaker2316',
+                'repo_id': 4,
+                'upload_type': 'draft'
+            },
+            'cursos': {
+                'host': 'https://cursos.uo.edu.cu/', 
+                'user': 'eric.serrano',
+                'password': 'Rulebreaker2316',
+                'repo_id': 4,
+                'upload_type': 'draft'
+            },
+            'cened': {
+                'host': 'https://aulacened.uci.cu/',
+                'user': 'eliel21',
+                'password': 'ElielThali2115.',
+                'repo_id': 5,
+                'upload_type': 'draft'
+            }
+        }
+        
+        self.strategy_priority = [
+            'direct_upload',
+            'cross_platform_link',
+            'mirror_upload', 
+            'url_resource'
+        ]
+        
+        self.performance_stats = {}
+        self.platform_status = {}
+
+    def analyze_platform_access(self):
+        """Analizar acceso a cada plataforma y determinar estrategia óptima"""
+        print("🔍 Analizando acceso a plataformas...")
+        
+        access_report = {}
+        
+        for platform_name, config in self.platforms.items():
+            try:
+                # 🚨 CONEXIÓN DIRECTA - SIN PROXY
+                client = MoodleClient(
+                    config['user'],
+                    config['password'], 
+                    config['host'],
+                    config['repo_id']
+                )
+                
+                # Test de conexión rápida
+                start_time = time.time()
+                can_login = client.login()
+                response_time = time.time() - start_time
+                
+                access_report[platform_name] = {
+                    'accessible': can_login,
+                    'response_time': response_time,
+                    'client': client if can_login else None
+                }
+                
+                status = "✅" if can_login else "❌"
+                print(f"  {status} {platform_name}: {response_time:.2f}s")
+                
+            except Exception as e:
+                access_report[platform_name] = {
+                    'accessible': False,
+                    'error': str(e),
+                    'response_time': float('inf')
+                }
+                print(f"  ❌ {platform_name}: Error - {e}")
+        
+        self.platform_status = access_report
+        return access_report
+
+    def get_optimal_strategy(self, target_platform):
+        """Determinar la mejor estrategia basada en el análisis"""
+        if not self.platform_status:
+            self.analyze_platform_access()
+        
+        target_platform = self._identify_platform(target_platform)
+        if not target_platform:
+            return None
+        
+        print(f"🎯 Objetivo detectado: {target_platform}")
+        
+        # ¿La plataforma objetivo es accesible directamente?
+        if (target_platform in self.platform_status and 
+            self.platform_status[target_platform]['accessible']):
+            print("✅ Estrategia: Subida DIRECTA")
+            return {
+                'strategy': 'direct_upload',
+                'target_platform': target_platform,
+                'confidence': 'high'
+            }
+        
+        # Buscar plataforma puente óptima
+        bridge_candidates = []
+        for platform, status in self.platform_status.items():
+            if platform != target_platform and status['accessible']:
+                bridge_candidates.append({
+                    'platform': platform,
+                    'response_time': status['response_time'],
+                    'client': status['client']
+                })
+        
+        # Ordenar por velocidad (más rápido primero)
+        bridge_candidates.sort(key=lambda x: x['response_time'])
+        
+        if bridge_candidates:
+            best_bridge = bridge_candidates[0]
+            print(f"🎯 Mejor puente: {best_bridge['platform']} ({best_bridge['response_time']:.2f}s)")
+            
+            # Seleccionar estrategia basada en combinación plataformas
+            strategy = self._select_strategy_for_pair(best_bridge['platform'], target_platform)
+            return {
+                'strategy': strategy,
+                'bridge_platform': best_bridge['platform'],
+                'target_platform': target_platform,
+                'bridge_client': best_bridge['client'],
+                'confidence': 'high' if best_bridge['response_time'] < 5 else 'medium'
+            }
+        
+        print("❌ No hay estrategia disponible")
+        return None
+
+    def _select_strategy_for_pair(self, bridge_platform, target_platform):
+        """Seleccionar estrategia óptima para par de plataformas"""
+        strategy_map = {
+            ('cened', 'eva'): 'cross_platform_link',
+            ('cened', 'cursos'): 'mirror_upload', 
+            ('eva', 'cursos'): 'cross_platform_link',
+            ('cursos', 'eva'): 'cross_platform_link'
+        }
+        
+        return strategy_map.get((bridge_platform, target_platform), 'cross_platform_link')
+
+    def smart_upload(self, file_path, target_platform_url, progress_callback=None):
+        """Subida inteligente con estrategia automática"""
+        try:
+            # Obtener estrategia óptima
+            strategy_plan = self.get_optimal_strategy(target_platform_url)
+            
+            if not strategy_plan:
+                return {'error': 'No hay estrategia disponible para esta plataforma'}
+            
+            print(f"🚀 Ejecutando estrategia: {strategy_plan['strategy']}")
+            
+            # Ejecutar estrategia seleccionada
+            if strategy_plan['strategy'] == 'direct_upload':
+                return self._execute_direct_upload(file_path, strategy_plan, progress_callback)
+            elif strategy_plan['strategy'] == 'cross_platform_link':
+                return self._execute_cross_platform_link(file_path, strategy_plan, progress_callback)
+            elif strategy_plan['strategy'] == 'mirror_upload':
+                return self._execute_mirror_upload(file_path, strategy_plan, progress_callback)
+            elif strategy_plan['strategy'] == 'url_resource':
+                return self._execute_url_resource(file_path, strategy_plan, progress_callback)
+            else:
+                return {'error': f'Estrategia no implementada: {strategy_plan["strategy"]}'}
+                
+        except Exception as e:
+            print(f"❌ Error en smart_upload: {e}")
+            return {'error': str(e)}
+
+    def _execute_direct_upload(self, file_path, strategy_plan, progress_callback):
+        """Estrategia 1: Subida directa (si la plataforma es accesible)"""
+        try:
+            target_platform = strategy_plan['target_platform']
+            config = self.platforms[target_platform]
+            
+            # 🚨 CONEXIÓN DIRECTA - SIN PROXY
+            client = MoodleClient(
+                config['user'],
+                config['password'],
+                config['host'], 
+                config['repo_id']
+            )
+            
+            if client.login():
+                result = client.upload_file_draft(
+                    file_path,
+                    progressfunc=progress_callback
+                )
+                
+                if result:
+                    return {
+                        'strategy': 'direct_upload',
+                        'platform': target_platform,
+                        'url': result[1]['url'],
+                        'efficiency': 'high',
+                        'message': f'✅ Subida directa a {target_platform.upper()}',
+                        'success': True
+                    }
+                    
+        except Exception as e:
+            print(f"Direct upload failed: {e}")
+            
+        return {'error': 'Subida directa fallida'}
+
+    def _execute_cross_platform_link(self, file_path, strategy_plan, progress_callback):
+        """Estrategia 2: Enlace cruzado entre plataformas"""
+        try:
+            bridge_platform = strategy_plan['bridge_platform']
+            target_platform = strategy_plan['target_platform']
+            
+            # 1. Subir a plataforma puente (CENED)
+            bridge_config = self.platforms[bridge_platform]
+            
+            # 🚨 CONEXIÓN DIRECTA - SIN PROXY
+            bridge_client = MoodleClient(
+                bridge_config['user'],
+                bridge_config['password'],
+                bridge_config['host'],
+                bridge_config['repo_id']
+            )
+            
+            if bridge_client.login():
+                bridge_result = bridge_client.upload_file_draft(
+                    file_path,
+                    progressfunc=progress_callback
+                )
+                
+                if bridge_result:
+                    bridge_url = bridge_result[1]['url']
+                    
+                    # 2. Crear página de enlace en plataforma objetivo
+                    link_page = self._create_link_page(file_path, bridge_url, bridge_platform)
+                    temp_html = f"temp_link_{os.path.basename(file_path)}.html"
+                    
+                    with open(temp_html, 'w', encoding='utf-8') as f:
+                        f.write(link_page)
+                    
+                    # 3. Subir página de enlace a plataforma objetivo
+                    target_config = self.platforms[target_platform]
+                    
+                    # 🚨 CONEXIÓN DIRECTA - SIN PROXY
+                    target_client = MoodleClient(
+                        target_config['user'],
+                        target_config['password'], 
+                        target_config['host'],
+                        target_config['repo_id']
+                    )
+                    
+                    target_upload_success = False
+                    target_url = None
+                    
+                    if target_client.login():
+                        target_result = target_client.upload_file_draft(temp_html)
+                        if target_result:
+                            target_url = target_result[1]['url']
+                            target_upload_success = True
+                    
+                    # Limpiar archivo temporal
+                    os.unlink(temp_html)
+                    
+                    return {
+                        'strategy': 'cross_platform_link',
+                        'bridge_platform': bridge_platform,
+                        'target_platform': target_platform, 
+                        'bridge_url': bridge_url,
+                        'target_url': target_url,
+                        'target_success': target_upload_success,
+                        'efficiency': 'high' if target_upload_success else 'medium',
+                        'message': f'🔗 Enlace {bridge_platform.upper()} → {target_platform.upper()}',
+                        'success': True
+                    }
+                    
+        except Exception as e:
+            print(f"Cross-platform link failed: {e}")
+            
+        return {'error': 'Enlace cruzado fallido'}
+
+    def _execute_mirror_upload(self, file_path, strategy_plan, progress_callback):
+        """Estrategia 3: Espejo entre plataformas (subir a ambas)"""
+        try:
+            bridge_platform = strategy_plan['bridge_platform']
+            target_platform = strategy_plan['target_platform']
+            
+            # Subir a plataforma puente (siempre funciona - CENED)
+            bridge_config = self.platforms[bridge_platform]
+            
+            # 🚨 CONEXIÓN DIRECTA - SIN PROXY
+            bridge_client = MoodleClient(
+                bridge_config['user'],
+                bridge_config['password'],
+                bridge_config['host'],
+                bridge_config['repo_id']
+            )
+            
+            bridge_client.login()
+            bridge_result = bridge_client.upload_file_draft(
+                file_path,
+                progressfunc=progress_callback
+            )
+            
+            bridge_url = bridge_result[1]['url'] if bridge_result else None
+            
+            # Intentar subir a plataforma objetivo (puede fallar)
+            target_url = None
+            target_success = False
+            target_config = self.platforms[target_platform]
+            
+            # 🚨 CONEXIÓN DIRECTA - SIN PROXY
+            target_client = MoodleClient(
+                target_config['user'],
+                target_config['password'],
+                target_config['host'],
+                target_config['repo_id']
+            )
+            
+            if target_client.login():
+                target_result = target_client.upload_file_draft(file_path)
+                if target_result:
+                    target_url = target_result[1]['url']
+                    target_success = True
+            
+            return {
+                'strategy': 'mirror_upload',
+                'bridge_platform': bridge_platform,
+                'target_platform': target_platform,
+                'bridge_url': bridge_url,
+                'target_url': target_url,
+                'target_success': target_success,
+                'efficiency': 'high' if target_success else 'medium',
+                'message': f'🪞 Espejo: {bridge_platform.upper}' + (f' + {target_platform.upper()}' if target_success else ' (solo bridge)'),
+                'success': True
+            }
+            
+        except Exception as e:
+            print(f"Mirror upload failed: {e}")
+            
+        return {'error': 'Espejo fallido'}
+
+    def _execute_url_resource(self, file_path, strategy_plan, progress_callback):
+        """Estrategia 4: Recurso URL"""
+        try:
+            bridge_platform = strategy_plan['bridge_platform']
+            target_platform = strategy_plan['target_platform']
+            
+            # Subir a plataforma puente
+            bridge_config = self.platforms[bridge_platform]
+            
+            # 🚨 CONEXIÓN DIRECTA - SIN PROXY
+            bridge_client = MoodleClient(
+                bridge_config['user'],
+                bridge_config['password'],
+                bridge_config['host'],
+                bridge_config['repo_id']
+            )
+            
+            if bridge_client.login():
+                bridge_result = bridge_client.upload_file_draft(
+                    file_path,
+                    progressfunc=progress_callback
+                )
+                
+                if bridge_result:
+                    bridge_url = bridge_result[1]['url']
+                    
+                    return {
+                        'strategy': 'url_resource',
+                        'bridge_platform': bridge_platform,
+                        'target_platform': target_platform,
+                        'bridge_url': bridge_url,
+                        'efficiency': 'medium',
+                        'message': f'📎 Recurso URL en {bridge_platform.upper()}',
+                        'success': True
+                    }
+                    
+        except Exception as e:
+            print(f"URL resource failed: {e}")
+            
+        return {'error': 'Recurso URL fallido'}
+
+    def _create_link_page(self, file_path, bridge_url, bridge_platform):
+        """Crear página HTML con enlace elegante"""
+        filename = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+        size_mb = file_size / (1024 * 1024)
+        
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Archivo: {filename}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }}
+        .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        .header {{ border-bottom: 2px solid #007cba; padding-bottom: 15px; margin-bottom: 25px; }}
+        .download-btn {{ display: inline-block; background: #007cba; color: white; padding: 12px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 10px; }}
+        .info {{ background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        .platform-badge {{ background: #28a745; color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📁 {filename}</h1>
+            <p>Archivo disponible a través de <span class="platform-badge">{bridge_platform.upper()}</span></p>
+        </div>
+        
+        <div class="info">
+            <p><strong>📊 Tamaño:</strong> {size_mb:.2f} MB</p>
+            <p><strong>🔗 Plataforma:</strong> {bridge_platform.upper()}</p>
+            <p><strong>📅 Generado:</strong> {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{bridge_url}" class="download-btn" target="_blank">⬇️ Descargar desde {bridge_platform.upper()}</a>
+        </div>
+        
+        <p style="text-align: center; color: #666; font-size: 14px;">
+            Este archivo está hospedado en la plataforma {bridge_platform.upper()} y es accesible desde este enlace.
+        </p>
+    </div>
+</body>
+</html>"""
+
+    def _identify_platform(self, url):
+        """Identificar plataforma basado en URL"""
+        if not url:
+            return None
+        if 'eva.uo.edu.cu' in url:
+            return 'eva'
+        elif 'cursos.uo.edu.cu' in url:
+            return 'cursos'
+        elif 'aulacened.uci.cu' in url:
+            return 'cened'
+        else:
+            return None
+
+    def get_strategy_report(self):
+        """Generar reporte de estrategias y rendimiento"""
+        if not self.platform_status:
+            self.analyze_platform_access()
+        
+        report = "📊 **Reporte de Estrategias Académicas**\n\n"
+        
+        for platform, status in self.platform_status.items():
+            icon = "✅" if status['accessible'] else "❌"
+            time_str = f"{status['response_time']:.2f}s" if status['accessible'] else "NO ACCESIBLE"
+            report += f"{icon} **{platform.upper()}**: {time_str}\n"
+        
+        return report
 
 def create_progress_bar(percentage, bars=15):
     """Crea barra de progreso estilo S1 con ⬢⬡"""
@@ -56,7 +501,7 @@ def format_time(seconds):
     except:
         return "00:00"
 
-def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,args):
+def downloadFile(downloader, filename, currentBits, totalBits, speed, time_elapsed, args):
     try:
         bot = args[0]
         message = args[1]
@@ -77,7 +522,6 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,ar
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        # CÁLCULO SIMPLIFICADO Y MÁS PRECISO DEL TIEMPO
         if speed > 0 and totalBits > currentBits:
             remaining_bits = totalBits - currentBits
             remaining_time = remaining_bits / speed
@@ -100,7 +544,7 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,ar
         print(str(ex))
     pass
 
-def uploadFile(filename,currentBits,totalBits,speed,time_elapsed,args):
+def uploadFile(filename, currentBits, totalBits, speed, time_elapsed, args):
     try:
         bot = args[0]
         message = args[1]
@@ -123,7 +567,6 @@ def uploadFile(filename,currentBits,totalBits,speed,time_elapsed,args):
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        # CÁLCULO SIMPLIFICADO Y MÁS PRECISO DEL TIEMPO
         if speed > 0 and totalBits > currentBits:
             remaining_bits = totalBits - currentBits
             remaining_time = remaining_bits / speed
@@ -153,96 +596,49 @@ def uploadFile(filename,currentBits,totalBits,speed,time_elapsed,args):
         print(str(ex))
     pass
 
-def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jdb=None):
+def processUploadFiles(filename, filesize, files, update, bot, message, thread=None, jdb=None):
     try:
-        bot.editMessageText(message,'<b>🔄 Preparando para subir...</b>', parse_mode='HTML')
-        evidence = None
-        fileid = None
+        bot.editMessageText(message,'<b>🎯 Iniciando estrategia inteligente...</b>', parse_mode='HTML')
         user_info = jdb.get_user(update.message.sender.username)
         cloudtype = user_info['cloudtype']
-        proxy = ProxyCloud.parse(user_info['proxy'])
+        
+        # 🚨 DESACTIVAR PROXY - Usar estrategia bridge
+        proxy = None
+        
         if cloudtype == 'moodle':
-            client = MoodleClient(user_info['moodle_user'],
-                                  user_info['moodle_password'],
-                                  user_info['moodle_host'],
-                                  user_info['moodle_repo_id'],
-                                  proxy=proxy)
-            loged = client.login()
-            itererr = 0
-            if not loged:
-                bot.editMessageText(message,'<b>❌ Error en la plataforma</b>', parse_mode='HTML')
-                return None
-                
-            if user_info['uploadtype'] == 'evidence':
-                evidences = client.getEvidences()
-                evidname = str(filename).split('.')[0]
-                for evid in evidences:
-                    if evid['name'] == evidname:
-                        evidence = evid
-                        break
-                if evidence is None:
-                    evidence = client.createEvidence(evidname)
-
-            originalfile = ''
-            total_parts = len(files)
-            draftlist = []
+            # 🎯 USAR ESTRATEGIA INTELIGENTE
+            smart_bridge = SmartAcademicBridge()
             
-            for i, f in enumerate(files, 1):
-                f_size = get_file_size(f)
-                resp = None
-                iter = 0
-                tokenize = False
-                
-                if user_info['tokenize']!=0:
-                   tokenize = True
-                   
-                part_info = None
-                if total_parts > 1:
-                    part_info = (i, total_parts, filename)
-                
-                while resp is None:
-                    if thread and thread.getStore('stop'):
-                        break
-                    if user_info['uploadtype'] == 'evidence':
-                        fileid,resp = client.upload_file(f,evidence,fileid,
-                                                        progressfunc=uploadFile,
-                                                        args=(bot,message,filename,thread,part_info),
-                                                        tokenize=tokenize)
-                        draftlist.append(resp)
-                    if user_info['uploadtype'] == 'draft':
-                        fileid,resp = client.upload_file_draft(f,
-                                                              progressfunc=uploadFile,
-                                                              args=(bot,message,filename,thread,part_info),
-                                                              tokenize=tokenize)
-                        draftlist.append(resp)
-                    if user_info['uploadtype'] == 'blog':
-                        fileid,resp = client.upload_file_blog(f,
-                                                             progressfunc=uploadFile,
-                                                             args=(bot,message,filename,thread,part_info),
-                                                             tokenize=tokenize)
-                        draftlist.append(resp)
-                    if user_info['uploadtype'] == 'calendario':
-                        fileid,resp = client.upload_file_calendar(f,
-                                                                 progressfunc=uploadFile,
-                                                                 args=(bot,message,filename,thread,part_info),
-                                                                 tokenize=tokenize)
-                        draftlist.append(resp)
-                    iter += 1
-                    if iter>=10:
-                        break
+            results = []
+            for i, file in enumerate(files):
                 if thread and thread.getStore('stop'):
                     break
-                os.unlink(f)
+                    
+                # Ejecutar estrategia inteligente
+                result = smart_bridge.smart_upload(
+                    file,
+                    user_info['moodle_host'],
+                    progressfunc=uploadFile,
+                    args=(bot, message, filename, thread, (i+1, len(files), filename))
+                )
                 
+                if result and 'success' in result and result['success']:
+                    results.append(result)
+                else:
+                    print(f"❌ Estrategia falló para {file}: {result.get('error', 'Unknown error')}")
+                
+                # Limpiar archivo después de subir
+                try:
+                    os.unlink(file)
+                except: pass
+            
             if thread and thread.getStore('stop'):
                 return None
                 
-            if user_info['uploadtype'] == 'evidence':
-                try:
-                    client.saveEvidence(evidence)
-                except:pass
-            return draftlist
+            return results
+            
         elif cloudtype == 'cloud':
+            # Para nube normal, usar método tradicional (pero sin proxy)
             tokenize = False
             if user_info['tokenize']!=0:
                tokenize = True
@@ -314,51 +710,91 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         is_compressed_file = file_extension in ['zip', 'rar', '7z', 'tar', 'gz']
             
         if file_size > max_file_size and not is_compressed_file:
+            # 🛠️ ARREGLADO: Mejor manejo de compresión
             compresingInfo = infos.createCompresing(file,file_size,max_file_size)
             bot.editMessageText(message,compresingInfo)
             
-            # CREAR ARCHIVO TEMPORAL CON NOMBRE CORRECTO
-            temp_dir = "temp_" + createID()
-            os.makedirs(temp_dir, exist_ok=True)
-            
-            # Copiar el archivo a un directorio temporal con su nombre original
-            temp_file_path = os.path.join(temp_dir, original_filename)
-            import shutil
-            shutil.copy2(file, temp_file_path)
-            
-            zipname = base_name + createID()
-            mult_file = zipfile.MultiFile(zipname, max_file_size)
-            
-            # CREAR ZIP CON EL ARCHIVO Y SU NOMBRE ORIGINAL
-            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLated) as zipf:
-                # Agregar el archivo con su nombre original preservado
-                zipf.write(temp_file_path, arcname=original_filename)
-            
-            mult_file.close()
-            
-            # LIMPIAR ARCHIVO TEMPORAL
             try:
-                shutil.rmtree(temp_dir)
-            except: pass
-            
-            # Usar el nombre base original para la subida
-            client = processUploadFiles(original_filename, file_size, mult_file.files, update, bot, message, thread=thread, jdb=jdb)
-            
-            try:
-                os.unlink(file)
-            except:pass
-            file_upload_count = len(mult_file.files)
-            
-            # LIMPIAR ARCHIVOS TEMPORALES ZIP
-            try:
-                for zip_file in mult_file.files:
-                    if os.path.exists(zip_file):
-                        os.unlink(zip_file)
-            except:pass
+                # CREAR ARCHIVO TEMPORAL CON NOMBRE CORRECTO
+                temp_dir = "temp_" + createID()
+                os.makedirs(temp_dir, exist_ok=True)
+                
+                # Copiar el archivo a un directorio temporal con su nombre original
+                temp_file_path = os.path.join(temp_dir, original_filename)
+                import shutil
+                shutil.copy2(file, temp_file_path)
+                
+                zipname = base_name + createID()
+                
+                # 🛠️ ARREGLADO: Usar zipfile normal
+                zip_filename = f"{zipname}.zip"
+                
+                # Crear ZIP con compresión
+                with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    zipf.write(temp_file_path, arcname=original_filename)
+                
+                # Verificar si el archivo zip necesita división
+                zip_size = get_file_size(zip_filename)
+                
+                if zip_size > max_file_size:
+                    # 🛠️ ARREGLADO: Dividir el ZIP si es muy grande
+                    bot.editMessageText(message, '<b>📦 Dividiendo archivo comprimido...</b>', parse_mode='HTML')
+                    
+                    # Leer el contenido del ZIP
+                    with open(zip_filename, 'rb') as f:
+                        zip_content = f.read()
+                    
+                    # Dividir en partes
+                    part_size = max_file_size
+                    total_parts = (len(zip_content) + part_size - 1) // part_size
+                    
+                    zip_parts = []
+                    for i in range(total_parts):
+                        part_data = zip_content[i * part_size:(i + 1) * part_size]
+                        part_filename = f"{zipname}_part{i+1:03d}.zip"
+                        
+                        with open(part_filename, 'wb') as part_file:
+                            part_file.write(part_data)
+                        
+                        zip_parts.append(part_filename)
+                    
+                    # Eliminar el archivo zip original
+                    os.unlink(zip_filename)
+                    files_to_upload = zip_parts
+                    file_upload_count = len(zip_parts)
+                    
+                else:
+                    files_to_upload = [zip_filename]
+                    file_upload_count = 1
+                
+                # LIMPIAR ARCHIVO TEMPORAL
+                try:
+                    shutil.rmtree(temp_dir)
+                except: pass
+                
+                # 🎯 USAR ESTRATEGIA INTELIGENTE para subir
+                client = processUploadFiles(original_filename, file_size, files_to_upload, update, bot, message, thread=thread, jdb=jdb)
+                
+                try:
+                    os.unlink(file)
+                except:pass
+                
+                # 🛠️ ARREGLADO: Limpiar archivos temporales ZIP después de subir
+                if 'files_to_upload' in locals():
+                    for temp_file in files_to_upload:
+                        try:
+                            if os.path.exists(temp_file):
+                                os.unlink(temp_file)
+                        except: pass
+                        
+            except Exception as e:
+                print(f"❌ Error en compresión: {e}")
+                bot.editMessageText(message, f'<b>❌ Error al comprimir</b>\n<code>{str(e)}</code>', parse_mode='HTML')
+                return
                         
         else:
-            # Para archivos pequeños o ya comprimidos, usar el nombre original
-            client = processUploadFiles(original_filename,file_size,[file],update,bot,message,thread=thread,jdb=jdb)
+            # Para archivos pequeños o ya comprimidos
+            client = processUploadFiles(original_filename, file_size, [file], update, bot, message, thread=thread, jdb=jdb)
             file_upload_count = 1
             
         if thread and thread.getStore('stop'):
@@ -378,81 +814,145 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             print(f"Error actualizando estadísticas: {e}")
             
         bot.editMessageText(message,'<b>📄 Preparando enlaces...</b>', parse_mode='HTML')
-        evidname = ''
+        
+        # 🎯 PROCESAR RESULTADOS DE ESTRATEGIA INTELIGENTE
+        if client and isinstance(client, list) and len(client) > 0:
+            # Es un resultado de estrategia bridge
+            return _process_bridge_results(client, original_filename, file_size, file_upload_count, update, bot, message, getUser)
+        else:
+            # Método tradicional
+            return _process_traditional_results(client, original_filename, file_size, file_upload_count, update, bot, message, getUser)
+            
+    except Exception as ex:
+        print(f"Error en processFile: {ex}")
+
+def _process_bridge_results(results, original_filename, file_size, file_upload_count, update, bot, message, user_info):
+    """Procesar resultados de estrategia bridge"""
+    try:
+        successful_results = [r for r in results if r and 'success' in r and r['success']]
+        
+        if not successful_results:
+            bot.editMessageText(message, "❌ Todas las estrategias fallaron")
+            return None
+        
+        # Construir mensaje de éxito
+        success_count = len(successful_results)
+        strategies_used = set(r['strategy'] for r in successful_results)
+        platforms_used = set()
+        
+        for r in successful_results:
+            if 'bridge_platform' in r:
+                platforms_used.add(r['bridge_platform'].upper())
+            if 'target_platform' in r:
+                platforms_used.add(r['target_platform'].upper())
+            if 'platform' in r:
+                platforms_used.add(r['platform'].upper())
+        
+        # Mensaje resumen
+        summary_msg = f"""
+🎯 **Estrategia Inteligente Exitosa**
+
+📊 **Resumen:**
+• 📁 Archivos procesados: {success_count}
+• 🎯 Estrategias: {', '.join(strategies_used)}
+• 🌐 Plataformas: {', '.join(platforms_used)}
+• ⚡ Eficiencia: {successful_results[0].get('efficiency', 'alta').upper()}
+
+🔗 **Resultados:**"""
+        
+        # Detalles por resultado
+        all_urls = []
+        for i, result in enumerate(successful_results):
+            result_msg = f"\n\n📄 **Resultado {i+1}:**"
+            result_msg += f"\n• 🎯 Estrategia: {result['strategy']}"
+            result_msg += f"\n• 📝 Mensaje: {result['message']}"
+            
+            if 'bridge_url' in result:
+                result_msg += f"\n• 🌉 Bridge: {result['bridge_url']}"
+                all_urls.append({'name': f"{original_filename} (Bridge)", 'directurl': result['bridge_url']})
+            if 'target_url' in result and result['target_url']:
+                result_msg += f"\n• 🎯 Target: {result['target_url']}"
+                all_urls.append({'name': f"{original_filename} (Target)", 'directurl': result['target_url']})
+            if 'url' in result:
+                result_msg += f"\n• 📍 Directo: {result['url']}"
+                all_urls.append({'name': original_filename, 'directurl': result['url']})
+            
+            summary_msg += result_msg
+        
+        bot.deleteMessage(message.chat.id, message.message_id)
+        bot.sendMessage(update.message.chat.id, summary_msg)
+        
+        # Enviar enlaces en TXT si hay URLs
+        if all_urls:
+            filesInfo = infos.createFileMsg(original_filename, all_urls)
+            bot.sendMessage(update.message.chat.id, filesInfo, parse_mode='html')
+            txtname = original_filename.split('.')[0] + '.txt'
+            sendTxt(txtname, all_urls, update, bot)
+        
+        return successful_results
+        
+    except Exception as e:
+        print(f"Error procesando resultados bridge: {e}")
+        return None
+
+def _process_traditional_results(client, original_filename, file_size, file_upload_count, update, bot, message, user_info):
+    """Procesar resultados tradicionales"""
+    try:
         files = []
         if client:
-            if getUser['cloudtype'] == 'moodle':
-                if getUser['uploadtype'] == 'evidence':
+            if user_info['cloudtype'] == 'moodle':
+                if user_info['uploadtype'] == 'evidence':
                     try:
-                        evidname = base_name  # Usar el nombre base original
-                        txtname = evidname + '.txt'
+                        evidname = original_filename.split('.')[0]
                         evidences = client.getEvidences()
                         for ev in evidences:
                             if ev['name'] == evidname:
                                files = ev['files']
                                break
-                            if len(ev['files'])>0:
-                               findex+=1
                         client.logout()
                     except:pass
-                if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
+                if user_info['uploadtype'] == 'draft' or user_info['uploadtype'] == 'blog' or user_info['uploadtype']=='calendario':
                    for draft in client:
                        files.append({'name':draft['file'],'directurl':draft['url']})
             else:
                 for data in client:
                     files.append({'name':data['name'],'directurl':data['url']})
 
-            # COMPATIBILIDAD CON NUBES UO - Incluir webservice para todas las plataformas
+            # Aplicar webservice a URLs
             for i in range(len(files)):
                 url = files[i]['directurl']
-                
-                # Para CENED - reemplazo existente
                 if 'aulacened.uci.cu' in url:
                     files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
-                
-                # Para EVA UO - agregar webservice
                 elif 'eva.uo.edu.cu' in url and '/webservice/' not in url:
                     files[i]['directurl'] = url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
-                
-                # Para CURSOS UO - agregar webservice  
                 elif 'cursos.uo.edu.cu' in url and '/webservice/' not in url:
                     files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
 
             bot.deleteMessage(message.chat.id,message.message_id)
             
-            # Usar el nombre original del archivo
-            total_parts = file_upload_count
-            
-            # MENSAJE FINAL SEGÚN PLATAFORMA
-            platform_name = get_platform_name(getUser['moodle_host'])
-            finish_title = "✅ Subida Completada"
-            
-            if platform_name == 'CENED':
-                finishInfo = format_s1_message(finish_title, [
-                    f"📄 Archivo: {original_filename}",
-                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                    f"🔗 Enlaces generados: {len(files)}",
-                    f"⏱️ Duración enlaces: 8-30 minutos",
-                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
-                ])
-            else:
-                finishInfo = format_s1_message(finish_title, [
-                    f"📄 Archivo: {original_filename}",
-                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                    f"🔗 Enlaces generados: {len(files)}",
-                    f"⏱️ Duración enlaces: 3 días",
-                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
-                ])
+            # Mensaje final
+            platform_name = get_platform_name(user_info['moodle_host'])
+            finishInfo = format_s1_message("✅ Subida Completada", [
+                f"📄 Archivo: {original_filename}",
+                f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                f"🔗 Enlaces generados: {len(files)}",
+                f"⏱️ Duración enlaces: 3 días",
+                f"💾 Partes: {file_upload_count}" if file_upload_count > 1 else "💾 Archivo único"
+            ])
             
             bot.sendMessage(message.chat.id, finishInfo)
             
             if len(files) > 0:
                 filesInfo = infos.createFileMsg(original_filename,files)
                 bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
-                txtname = base_name + '.txt'
+                txtname = original_filename.split('.')[0] + '.txt'
                 sendTxt(txtname,files,update,bot)
-    except Exception as ex:
-        print(f"Error en processFile: {ex}")
+                
+        return files
+        
+    except Exception as e:
+        print(f"Error procesando resultados tradicionales: {e}")
+        return None
 
 def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
     try:
@@ -465,44 +965,15 @@ def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
             if file:
                 processFile(update,bot,message,file,thread=thread,jdb=jdb)
             else:
-                megadl(update,bot,message,url,file_name,thread,jdb=jdb)
+                bot.editMessageText(message, '<b>❌ Error en la descarga</b>', parse_mode='HTML')
             
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
             del bot.threads[thread.cancel_id]
     except Exception as ex:
         print(f"Error en ddl: {ex}")
 
-def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
-    try:
-        thread.cancel_id = createID()
-        bot.threads[thread.cancel_id] = thread
-        
-        megadl = megacli.mega.Mega({'verbose': True})
-        megadl.login()
-        try:
-            info = megadl.get_public_url_info(megaurl)
-            file_name = info['name']
-            megadl.download_url(megaurl,dest_path=None,dest_filename=file_name,progressfunc=downloadFile,args=(bot,message,thread))
-            if not megadl.stoping:
-                processFile(update,bot,message,file_name,thread=thread)
-        except:
-            files = megaf.get_files_from_folder(megaurl)
-            for f in files:
-                file_name = f['name']
-                megadl._download_file(f['handle'],f['key'],dest_path=None,dest_filename=file_name,is_public=False,progressfunc=downloadFile,args=(bot,message,thread),f_data=f['data'])
-                if not megadl.stoping:
-                    processFile(update,bot,message,file_name,thread=thread)
-            pass
-            
-        if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
-            del bot.threads[thread.cancel_id]
-    except Exception as ex:
-        print(f"Error en megadl: {ex}")
-    pass
-
 def sendTxt(name,files,update,bot):
     try:
-        # SOLO ENLACES EN EL TXT - SIN INFORMACIÓN ADICIONAL
         with open(name, 'w', encoding='utf-8') as txt:
             for f in files:
                 txt.write(f"{f['directurl']}\n")
@@ -511,7 +982,7 @@ def sendTxt(name,files,update,bot):
 
 📎 <b>Nombre:</b> <code>{name}</code>
 🔗 <b>Enlaces incluidos:</b> {len(files)}
-⏱️ <b>Duración de enlaces:</b> 8-30 minutos
+⏱️ <b>Duración de enlaces:</b> 3 días
 
 ⬇️ <b>Descarga el archivo TXT abajo</b>"""
         
@@ -538,22 +1009,6 @@ def get_platform_name(host):
     else:
         return 'Personalizada'
 
-def test_proxy_connection(user_info):
-    """Testea si el proxy actual funciona"""
-    try:
-        proxy = ProxyCloud.parse(user_info['proxy'])
-        client = MoodleClient(
-            user_info['moodle_user'],
-            user_info['moodle_password'],
-            user_info['moodle_host'],
-            user_info['moodle_repo_id'],
-            proxy=proxy
-        )
-        return client.test_connection()
-    except Exception as e:
-        print(f"Error testing proxy: {e}")
-        return False
-
 def onmessage(update,bot:ObigramClient):
     try:
         thread = bot.this_thread
@@ -571,7 +1026,6 @@ def onmessage(update,bot:ObigramClient):
                 if username == tl_admin_user:
                     jdb.create_admin(username)
                 else:
-                    # Usuarios normales no se crean automáticamente, deben ser agregados por admin
                     bot.sendMessage(update.message.chat.id,
                                    "<b>🚫 Acceso Restringido</b>\n\n"
                                    "No tienes acceso a este bot.\n\n"
@@ -599,197 +1053,45 @@ def onmessage(update,bot:ObigramClient):
 
         is_text = msgText != ''
         isadmin = jdb.is_admin(username)
-        
-        # NUEVOS COMANDOS PARA PROXY
-        if '/proxy_test' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
+
+        # 🎯 NUEVOS COMANDOS DE ESTRATEGIA BRIDGE
+        if '/bridge_analyze' in msgText:
+            smart_bridge = SmartAcademicBridge()
+            report = smart_bridge.analyze_platform_access()
             
-            try:
-                current_proxy = user_info.get('proxy', '')
-                if not current_proxy:
-                    bot.sendMessage(update.message.chat.id,
-                        '<b>🔍 Estado del Proxy</b>\n\n'
-                        '<b>Proxy actual:</b> Conexión directa (sin proxy)\n'
-                        '<b>Estado:</b> ✅ Funcionando (si hay conexión a internet)',
-                        parse_mode='HTML'
-                    )
-                    return
-                
-                message = bot.sendMessage(update.message.chat.id, 
-                    f'<b>🧪 Probando proxy...</b>\n<code>{current_proxy}</code>', 
-                    parse_mode='HTML'
-                )
-                
-                if test_proxy_connection(user_info):
-                    bot.editMessageText(message,
-                        f'<b>✅ Proxy FUNCIONA</b>\n\n'
-                        f'<b>Proxy:</b> <code>{current_proxy}</code>\n'
-                        f'<b>Estado:</b> ✅ Conectado correctamente',
-                        parse_mode='HTML'
-                    )
-                else:
-                    bot.editMessageText(message,
-                        f'<b>❌ Proxy NO FUNCIONA</b>\n\n'
-                        f'<b>Proxy:</b> <code>{current_proxy}</code>\n'
-                        f'<b>Estado:</b> ❌ No se puede conectar\n\n'
-                        f'<b>Solución:</b>\n'
-                        f'• Verifica el formato del proxy\n'
-                        f'• Prueba con /proxy_clear para conexión directa\n'
-                        f'• Usa /proxy para configurar otro proxy',
-                        parse_mode='HTML'
-                    )
-            except Exception as e:
-                bot.sendMessage(update.message.chat.id, f'<b>❌ Error probando proxy:</b>\n<code>{str(e)}</code>', parse_mode='HTML')
+            report_msg = "🔍 **Análisis de Plataformas**\n\n"
+            for platform, status in report.items():
+                status_icon = "✅" if status['accessible'] else "❌"
+                time_str = f"{status['response_time']:.2f}s" if status['accessible'] else "NO ACCESIBLE"
+                report_msg += f"{status_icon} **{platform.upper()}**: {time_str}\n"
+            
+            report_msg += f"\n🎯 **Recomendación:** Usar estrategia bridge automática"
+            bot.sendMessage(update.message.chat.id, report_msg, parse_mode='HTML')
             return
 
-        if '/proxy_clear' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
+        if '/bridge_strategy' in msgText:
+            user_info = jdb.get_user(username)
+            smart_bridge = SmartAcademicBridge()
             
-            try:
-                old_proxy = user_info.get('proxy', '')
-                user_info['proxy'] = ''
-                jdb.save_data_user(username, user_info)
-                jdb.save()
-                
-                bot.sendMessage(update.message.chat.id,
-                    '<b>✅ Proxy eliminado</b>\n\n'
-                    f'<b>Proxy anterior:</b> <code>{old_proxy if old_proxy else "Ninguno"}</code>\n'
-                    f'<b>Estado actual:</b> Conexión directa\n\n'
-                    f'<b>Ahora se usará conexión directa al servidor</b>',
-                    parse_mode='HTML'
-                )
-            except Exception as e:
-                bot.sendMessage(update.message.chat.id, f'<b>❌ Error:</b> {str(e)}', parse_mode='HTML')
+            strategy = smart_bridge.get_optimal_strategy(user_info['moodle_host'])
+            
+            if strategy:
+                strategy_msg = f"""
+🎯 **Estrategia Recomendada**
+
+**Plataforma objetivo:** {strategy.get('target_platform', 'N/A')}
+**Estrategia:** {strategy['strategy']}
+**Confianza:** {strategy.get('confidence', 'media').upper()}
+"""
+                if 'bridge_platform' in strategy:
+                    strategy_msg += f"**Plataforma puente:** {strategy['bridge_platform'].upper()}"
+            else:
+                strategy_msg = "❌ **No hay estrategia disponible** para esta plataforma"
+            
+            bot.sendMessage(update.message.chat.id, strategy_msg, parse_mode='HTML')
             return
 
-        # COMANDO PROXY MEJORADO
-        if '/proxy' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            
-            try:
-                parts = msgText.split(' ', 1)
-                if len(parts) < 2:
-                    # Mostrar ayuda si no se proporciona proxy
-                    current_proxy = user_info.get('proxy', '')
-                    proxy_status = "✅ Configurado" if current_proxy else "❌ No configurado"
-                    
-                    bot.sendMessage(update.message.chat.id,
-                        '<b>🔧 Configuración de Proxy</b>\n\n'
-                        f'<b>Proxy actual:</b> <code>{current_proxy if current_proxy else "Conexión directa"}</code>\n'
-                        f'<b>Estado:</b> {proxy_status}\n\n'
-                        '<b>Formatos soportados:</b>\n'
-                        '<code>/proxy http://ip:puerto</code>\n'
-                        '<code>/proxy https://ip:puerto</code>\n'  
-                        '<code>/proxy socks5://ip:puerto</code>\n'
-                        '<code>/proxy socks4://ip:puerto</code>\n\n'
-                        '<b>Ejemplos:</b>\n'
-                        '<code>/proxy http://190.6.64.154:8080</code>\n'
-                        '<code>/proxy socks5://190.6.65.2:1080</code>\n\n'
-                        '<b>Otros comandos:</b>\n'
-                        '<code>/proxy_test</code> - Probar proxy actual\n'
-                        '<code>/proxy_clear</code> - Usar conexión directa',
-                        parse_mode='HTML'
-                    )
-                    return
-                
-                proxy_url = parts[1].strip()
-                old_proxy = user_info.get('proxy', '')
-                
-                # Validar formato básico del proxy
-                if proxy_url and not any(proto in proxy_url for proto in ['http://', 'https://', 'socks4://', 'socks5://']):
-                    bot.sendMessage(update.message.chat.id,
-                        '<b>❌ Formato de proxy inválido</b>\n\n'
-                        '<b>Usa uno de estos formatos:</b>\n'
-                        '<code>http://ip:puerto</code>\n'
-                        '<code>https://ip:puerto</code>\n'
-                        '<code>socks4://ip:puerto</code>\n'
-                        '<code>socks5://ip:puerto</code>',
-                        parse_mode='HTML'
-                    )
-                    return
-                
-                message = bot.sendMessage(update.message.chat.id, 
-                    f'<b>🔧 Configurando proxy...</b>\n<code>{proxy_url}</code>', 
-                    parse_mode='HTML'
-                )
-                
-                # Probar el nuevo proxy antes de guardarlo
-                test_user_info = user_info.copy()
-                test_user_info['proxy'] = proxy_url
-                
-                if proxy_url and not test_proxy_connection(test_user_info):
-                    bot.editMessageText(message,
-                        f'<b>❌ Proxy no funciona</b>\n\n'
-                        f'<b>Proxy:</b> <code>{proxy_url}</code>\n'
-                        f'<b>Estado:</b> ❌ No se pudo conectar\n\n'
-                        f'<b>¿Quieres guardarlo de todas formas?</b>\n'
-                        f'Responde <code>/confirm_proxy</code> para guardar\n'
-                        f'o configura otro proxy',
-                        parse_mode='HTML'
-                    )
-                    # Guardar temporalmente para confirmación
-                    user_info['temp_proxy'] = proxy_url
-                    jdb.save_data_user(username, user_info)
-                    jdb.save()
-                    return
-                
-                # Guardar el proxy
-                user_info['proxy'] = proxy_url
-                if 'temp_proxy' in user_info:
-                    del user_info['temp_proxy']
-                jdb.save_data_user(username, user_info)
-                jdb.save()
-                
-                bot.editMessageText(message,
-                    f'<b>✅ Proxy configurado</b>\n\n'
-                    f'<b>Proxy anterior:</b> <code>{old_proxy if old_proxy else "Ninguno"}</code>\n'
-                    f'<b>Proxy nuevo:</b> <code>{proxy_url if proxy_url else "Conexión directa"}</code>\n'
-                    f'<b>Estado:</b> ✅ Configurado correctamente\n\n'
-                    f'<b>Usa /proxy_test para verificar la conexión</b>',
-                    parse_mode='HTML'
-                )
-                
-            except Exception as e:
-                bot.sendMessage(update.message.chat.id, f'<b>❌ Error configurando proxy:</b>\n<code>{str(e)}</code>', parse_mode='HTML')
-            return
-
-        # CONFIRMACIÓN DE PROXY (cuando no funciona pero se quiere guardar)
-        if '/confirm_proxy' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            
-            try:
-                temp_proxy = user_info.get('temp_proxy', '')
-                if not temp_proxy:
-                    bot.sendMessage(update.message.chat.id, '<b>❌ No hay proxy temporal para confirmar</b>', parse_mode='HTML')
-                    return
-                
-                old_proxy = user_info.get('proxy', '')
-                user_info['proxy'] = temp_proxy
-                del user_info['temp_proxy']
-                jdb.save_data_user(username, user_info)
-                jdb.save()
-                
-                bot.sendMessage(update.message.chat.id,
-                    f'<b>⚠️ Proxy guardado (sin verificación)</b>\n\n'
-                    f'<b>Proxy anterior:</b> <code>{old_proxy if old_proxy else "Ninguno"}</code>\n'
-                    f'<b>Proxy nuevo:</b> <code>{temp_proxy}</code>\n'
-                    f'<b>Estado:</b> ⚠️ Guardado sin verificación\n\n'
-                    f'<b>Puede que no funcione. Usa /proxy_test para verificar.</b>',
-                    parse_mode='HTML'
-                )
-            except Exception as e:
-                bot.sendMessage(update.message.chat.id, f'<b>❌ Error:</b> {str(e)}', parse_mode='HTML')
-            return
-
-        # COMANDOS DE CONFIGURACIÓN RÁPIDA PARA ADMIN
+        # COMANDOS DE CONFIGURACIÓN RÁPIDA
         if '/moodle_eva' in msgText and isadmin:
             user_info['moodle_host'] = 'https://eva.uo.edu.cu/'
             user_info['moodle_user'] = 'eric.serrano'
@@ -797,10 +1099,13 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_repo_id'] = 4
             user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
-            user_info['zips'] = 99  # 99 MB para EVA
+            user_info['zips'] = 99
             jdb.save_data_user(username, user_info)
             jdb.save()
-            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para EVA</b>', parse_mode='HTML')
+            bot.sendMessage(update.message.chat.id, 
+                '<b>✅ Configurado para EVA</b>\n\n'
+                '<b>🎯 Estrategia:</b> Bridge automático via CENED',
+                parse_mode='HTML')
             return
 
         if '/moodle_cursos' in msgText and isadmin:
@@ -810,10 +1115,13 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_repo_id'] = 4
             user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
-            user_info['zips'] = 99  # 99 MB para CURSOS
+            user_info['zips'] = 99
             jdb.save_data_user(username, user_info)
             jdb.save()
-            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CURSOS</b>', parse_mode='HTML')
+            bot.sendMessage(update.message.chat.id, 
+                '<b>✅ Configurado para CURSOS</b>\n\n'
+                '<b>🎯 Estrategia:</b> Bridge automático via CENED',
+                parse_mode='HTML')
             return
 
         if '/moodle_cened' in msgText and isadmin:
@@ -823,158 +1131,13 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_repo_id'] = 5
             user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
-            user_info['zips'] = 100  # 100 MB para CENED
+            user_info['zips'] = 100
             jdb.save_data_user(username, user_info)
             jdb.save()
-            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CENED</b>', parse_mode='HTML')
-            return
-        
-        # COMANDO ADDUSERCONFIG MEJORADO - Agrega y configura usuarios
-        if '/adduserconfig' in msgText:
-            isadmin = jdb.is_admin(username)
-            if isadmin:
-                try:
-                    # Formato: /adduserconfig usuario1,usuario2 [eva|cursos|cened]
-                    parts = str(msgText).split(' ', 2)
-                    if len(parts) < 3:
-                        bot.sendMessage(update.message.chat.id,
-                                       '<b>❌ Formato incorrecto</b>\n\n'
-                                       '<b>Formatos válidos:</b>\n'
-                                       '<code>/adduserconfig usuario eva</code>\n'
-                                       '<code>/adduserconfig usuario1,usuario2 cursos</code>\n'
-                                       '<code>/adduserconfig usuario cened</code>',
-                                       parse_mode='HTML')
-                        return
-                    
-                    target_users_text = parts[1]
-                    platform = parts[2].strip().lower()
-                    
-                    # CONFIGURACIONES PREDEFINIDAS
-                    configs = {
-                        'eva': {
-                            'host': 'https://eva.uo.edu.cu/',
-                            'user': 'eric.serrano',
-                            'password': 'Rulebreaker2316',
-                            'repo_id': 4,
-                            'uptype': 'draft',
-                            'name': 'EVA UO',
-                            'zips': 99
-                        },
-                        'cursos': {
-                            'host': 'https://cursos.uo.edu.cu/',
-                            'user': 'eric.serrano', 
-                            'password': 'Rulebreaker2316',
-                            'repo_id': 4,
-                            'uptype': 'draft',
-                            'name': 'CURSOS UO',
-                            'zips': 99
-                        },
-                        'cened': {
-                            'host': 'https://aulacened.uci.cu/',
-                            'user': 'eliel21',
-                            'password': 'ElielThali2115.',
-                            'repo_id': 5,
-                            'uptype': 'draft',
-                            'name': 'CENED',
-                            'zips': 100
-                        }
-                    }
-                    
-                    # Validar plataforma
-                    if platform not in configs:
-                        bot.sendMessage(update.message.chat.id,
-                                       '<b>❌ Plataforma no válida</b>\n'
-                                       '<b>Opciones:</b> eva, cursos, cened',
-                                       parse_mode='HTML')
-                        return
-                    
-                    # Procesar múltiples usuarios (con @ o sin @)
-                    raw_users = [user.strip() for user in target_users_text.split(',')]
-                    target_users = []
-                    for user in raw_users:
-                        if user:
-                            # Agregar @ si no lo tiene
-                            if not user.startswith('@'):
-                                user = '@' + user
-                            target_users.append(user)
-                    
-                    config = configs[platform]
-                    
-                    configured_users = []
-                    existing_users = []
-                    
-                    for target_user in target_users:
-                        if not target_user:
-                            continue
-                            
-                        # Prevenir auto-configuración del admin
-                        if target_user == f'@{username}':
-                            continue
-                        
-                        username_clean = target_user.replace('@', '')
-                        
-                        # Verificar si el usuario ya existe
-                        if jdb.get_user(username_clean):
-                            existing_users.append(target_user)
-                            continue
-                        
-                        # Crear usuario nuevo
-                        jdb.create_user(username_clean)
-                        
-                        # Obtener y configurar usuario
-                        new_user_info = jdb.get_user(username_clean)
-                        new_user_info['moodle_host'] = config['host']
-                        new_user_info['moodle_user'] = config['user']
-                        new_user_info['moodle_password'] = config['password']
-                        new_user_info['moodle_repo_id'] = config['repo_id']
-                        new_user_info['uploadtype'] = config['uptype']
-                        new_user_info['cloudtype'] = 'moodle'
-                        new_user_info['zips'] = config['zips']
-                        new_user_info['tokenize'] = 0
-                        new_user_info['proxy'] = ''
-                        new_user_info['dir'] = '/'
-                        
-                        jdb.save_data_user(username_clean, new_user_info)
-                        configured_users.append(target_user)
-                    
-                    jdb.save()
-                    
-                    # Construir mensaje de resultado
-                    message_parts = []
-                    
-                    if configured_users:
-                        if len(configured_users) == 1:
-                            user_msg = format_s1_message("✅ Usuario Agregado y Configurado", [
-                                f"👤 Usuario: {configured_users[0]}",
-                                f"🏫 Plataforma: {config['name']}"
-                            ])
-                            message_parts.append(user_msg)
-                        else:
-                            users_list = ', '.join(configured_users)
-                            message_parts.append(f'<b>✅ Usuarios agregados y configurados:</b> {users_list}\n<b>Plataforma:</b> {config["name"]}')
-                    
-                    if existing_users:
-                        if len(existing_users) == 1:
-                            message_parts.append(f'<b>⚠️ Usuario ya existente:</b> {existing_users[0]}')
-                        else:
-                            users_list = ', '.join(existing_users)
-                            message_parts.append(f'<b>⚠️ Usuarios ya existentes:</b> {users_list}')
-                    
-                    if message_parts:
-                        final_message = '\n\n'.join(message_parts)
-                    else:
-                        final_message = '<b>❌ No se agregaron usuarios</b>'
-                        
-                    bot.sendMessage(update.message.chat.id, final_message, parse_mode='HTML')
-                    
-                except Exception as e:
-                    print(f"Error en adduserconfig: {e}")
-                    bot.sendMessage(update.message.chat.id,
-                                   '<b>❌ Error en el comando</b>\n'
-                                   '<code>/adduserconfig usuario plataforma</code>',
-                                   parse_mode='HTML')
-            else:
-                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
+            bot.sendMessage(update.message.chat.id, 
+                '<b>✅ Configurado para CENED</b>\n\n'
+                '<b>🎯 Estrategia:</b> Subida directa',
+                parse_mode='HTML')
             return
 
         # BLOQUEAR COMANDOS DE ADMIN PARA USUARIOS NORMALES
@@ -983,7 +1146,7 @@ def onmessage(update,bot:ObigramClient):
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
             '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened',
-            '/proxy_test', '/proxy_clear', '/confirm_proxy'
+            '/proxy_test', '/proxy_clear', '/confirm_proxy', '/bridge_analyze', '/bridge_strategy'
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -998,345 +1161,56 @@ def onmessage(update,bot:ObigramClient):
         # MENSAJE PARA TEXTO SIN COMANDOS NI URLS
         if is_text and not msgText.startswith('/') and not 'http' in msgText:
             bot.sendMessage(update.message.chat.id,
-                           "<b>🤖 Bot de Subida de Archivos</b>\n\n"
-                           "📤 <b>Para subir archivos:</b> Envía un enlace HTTP/HTTPS\n\n"
-                           "📝 <b>Para ver comandos disponibles:</b> Usa /start",
+                           "<b>🤖 Bot de Subida Inteligente</b>\n\n"
+                           "🎯 <b>Características:</b>\n"
+                           "• Estrategia bridge automática\n" 
+                           "• Sin proxy requerido\n"
+                           "• Compatible con EVA/CURSOS/CENED\n\n"
+                           "📤 <b>Para subir archivos:</b> Envía un enlace HTTP/HTTPS",
                            parse_mode='HTML')
             return
 
-        # COMANDO BANUSER
-        if '/banuser' in msgText:
-            isadmin = jdb.is_admin(username)
-            if isadmin:
-                try:
-                    users_text = str(msgText).split(' ', 1)[1]
-                    
-                    # Procesar múltiples usuarios (con @ o sin @)
-                    raw_users = [user.strip() for user in users_text.split(',')]
-                    target_users = []
-                    for user in raw_users:
-                        if user:
-                            # Agregar @ si no lo tiene
-                            if not user.startswith('@'):
-                                user = '@' + user
-                            target_users.append(user)
-                    
-                    banned_users = []
-                    not_found_users = []
-                    self_ban_attempt = False
-                    
-                    for target_user in target_users:
-                        if target_user:
-                            if target_user == f'@{username}':
-                                self_ban_attempt = True
-                                continue
-                            username_clean = target_user.replace('@', '')
-                            if jdb.get_user(username_clean):
-                                jdb.remove(username_clean)
-                                banned_users.append(target_user)
-                            else:
-                                not_found_users.append(target_user)
-                    
-                    jdb.save()
-                    
-                    message_parts = []
-                    
-                    if banned_users:
-                        if len(banned_users) == 1:
-                            message_parts.append(f'<b>🚫 Usuario baneado:</b> {banned_users[0]}')
-                        else:
-                            users_list = ', '.join(banned_users)
-                            message_parts.append(f'<b>🚫 Usuarios baneados:</b> {users_list}')
-                    
-                    if not_found_users:
-                        if len(not_found_users) == 1:
-                            message_parts.append(f'<b>❌ Usuario no encontrado:</b> {not_found_users[0]}')
-                        else:
-                            users_list = ', '.join(not_found_users)
-                            message_parts.append(f'<b>❌ Usuarios no encontrados:</b> {users_list}')
-                    
-                    if self_ban_attempt:
-                        message_parts.append('<b>⚠️ No puedes banearte a ti mismo</b>')
-                    
-                    if message_parts:
-                        final_message = '\n\n'.join(message_parts)
-                    else:
-                        final_message = '<b>❌ No se proporcionaron usuarios válidos</b>'
-                        
-                    bot.sendMessage(update.message.chat.id, final_message, parse_mode='HTML')
-                    
-                except Exception as e:
-                    print(f"Error en banuser: {e}")
-                    bot.sendMessage(update.message.chat.id,
-                                   '<b>❌ Error en el comando:</b>\n'
-                                   '<code>/banuser user1, user2, user3</code>\n\n'
-                                   '<b>Ejemplos:</b>\n'
-                                   '<code>/banuser juan</code>\n'
-                                   '<code>/banuser juan, maria, pedro</code>', 
-                                   parse_mode='HTML')
-            else:
-                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
-            return
-
-        if '/getdb' in msgText:
-            isadmin = jdb.is_admin(username)
-            if isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>📦 Base de datos:</b>', parse_mode='HTML')
-                bot.sendFile(update.message.chat.id,'database.jdb')
-            else:
-                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
-            return
-
-        # COMANDO TUTORIAL (LEE DESDE ARCHIVO)
-        if '/tutorial' in msgText:
-            try:
-                tuto = open('tuto.txt','r', encoding='utf-8')
-                tutorial_content = tuto.read()
-                tuto.close()
-                bot.sendMessage(update.message.chat.id, tutorial_content)
-            except Exception as e:
-                print(f"Error cargando tutorial: {e}")
-                bot.sendMessage(update.message.chat.id,'<b>📚 Archivo de tutorial no disponible</b>', parse_mode='HTML')
-            return
-
-        # COMANDOS DE USUARIO (SOLO PARA ADMINISTRADOR)
-        if '/myuser' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            getUser = user_info
-            if getUser:
-                statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-                return
-        if '/zips' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            getUser = user_info
-            if getUser:
-                try:
-                   size = int(str(msgText).split(' ')[1])
-                   getUser['zips'] = size
-                   jdb.save_data_user(username,getUser)
-                   jdb.save()
-                   msg = f'<b>✅ Zips configurados a</b> {sizeof_fmt(size*1024*1024)} <b>por parte</b>'
-                   bot.sendMessage(update.message.chat.id,msg, parse_mode='HTML')
-                except:
-                   bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/zips tamaño_en_mb</code>', parse_mode='HTML')
-                return
-        if '/account' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            try:
-                account = str(msgText).split(' ',2)[1].split(',')
-                user = account[0]
-                passw = account[1]
-                getUser = user_info
-                if getUser:
-                    getUser['moodle_user'] = user
-                    getUser['moodle_password'] = passw
-                    jdb.save_data_user(username,getUser)
-                    jdb.save()
-                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-            except:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/account usuario,contraseña</code>', parse_mode='HTML')
-            return
-        if '/host' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            try:
-                cmd = str(msgText).split(' ',2)
-                host = cmd[1]
-                getUser = user_info
-                if getUser:
-                    getUser['moodle_host'] = host
-                    jdb.save_data_user(username,getUser)
-                    jdb.save()
-                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-            except:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/host url_del_moodle</code>', parse_mode='HTML')
-            return
-        if '/repoid' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            try:
-                cmd = str(msgText).split(' ',2)
-                repoid = int(cmd[1])
-                getUser = user_info
-                if getUser:
-                    getUser['moodle_repo_id'] = repoid
-                    jdb.save_data_user(username,getUser)
-                    jdb.save()
-                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-            except:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/repoid id_del_repositorio</code>', parse_mode='HTML')
-            return
-        if '/tokenize_on' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            try:
-                getUser = user_info
-                if getUser:
-                    getUser['tokenize'] = 1
-                    jdb.save_data_user(username,getUser)
-                    jdb.save()
-                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-            except:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error activando tokenize</b>', parse_mode='HTML')
-            return
-        if '/tokenize_off' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            try:
-                getUser = user_info
-                if getUser:
-                    getUser['tokenize'] = 0
-                    jdb.save_data_user(username,getUser)
-                    jdb.save()
-                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-            except:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error desactivando tokenize</b>', parse_mode='HTML')
-            return
-        if '/cloud' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            try:
-                cmd = str(msgText).split(' ',2)
-                repoid = cmd[1]
-                getUser = user_info
-                if getUser:
-                    getUser['cloudtype'] = repoid
-                    jdb.save_data_user(username,getUser)
-                    jdb.save()
-                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-            except:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/cloud (moodle o cloud)</code>', parse_mode='HTML')
-            return
-        if '/uptype' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            try:
-                cmd = str(msgText).split(' ',2)
-                type = cmd[1]
-                getUser = user_info
-                if getUser:
-                    getUser['uploadtype'] = type
-                    jdb.save_data_user(username,getUser)
-                    jdb.save()
-                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-            except:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/uptype (evidence, draft, blog)</code>', parse_mode='HTML')
-            return
-        if '/proxy' in msgText:
-            # Este comando ya está manejado arriba
-            pass
-        if '/dir' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            try:
-                cmd = str(msgText).split(' ',2)
-                repoid = cmd[1]
-                getUser = user_info
-                if getUser:
-                    getUser['dir'] = repoid + '/'
-                    jdb.save_data_user(username,getUser)
-                    jdb.save()
-                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
-                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
-            except:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/dir nombre_carpeta</code>', parse_mode='HTML')
-            return
-        if '/cancel_' in msgText:
-            try:
-                cmd = str(msgText).split('_',2)
-                tid = cmd[1]
-                if tid in bot.threads:
-                    tcancel = bot.threads[tid]
-                    msg = tcancel.getStore('msg')
-                    tcancel.store('stop',True)
-                    time.sleep(2)
-                    bot.editMessageText(msg,'<b>❌ Tarea Cancelada</b>', parse_mode='HTML')
-                else:
-                    bot.sendMessage(update.message.chat.id,'<b>❌ Proceso no encontrado o ya finalizado</b>', parse_mode='HTML')
-            except Exception as ex:
-                print(str(ex))
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error al cancelar</b>', parse_mode='HTML')
-            return
-
-        message = bot.sendMessage(update.message.chat.id,'<b>⏳ Procesando...</b>', parse_mode='HTML')
-
+        message = bot.sendMessage(update.message.chat.id,'<b>🎯 Inicializando estrategia...</b>', parse_mode='HTML')
         thread.store('msg',message)
 
         if '/start' in msgText:
-            # Obtener plataforma actual
             platform_name = get_platform_name(user_info.get('moodle_host', ''))
             
-            # Obtener estado del proxy
-            current_proxy = user_info.get('proxy', '')
-            proxy_status = f"┣⪼ 🔌 Proxy: <code>{current_proxy if current_proxy else 'Conexión directa'}</code>\n"
-            
-            # Mensaje según plataforma para duración de enlaces
-            duration_info = ""
-            if platform_name == 'CENED':
-                duration_info = "┣⪼ ⏱️ Enlaces: 8-30 minutos\n"
-            else:
-                duration_info = "┣⪼ ⏱️ Enlaces: 3 días\n"
-            
             if isadmin:
-                welcome_text = f"""╭━━━━❰🤖 Bot de Moodle - ADMIN❱━➣
-┣⪼ 🚀 Subidas a Moodle/Cloud
+                welcome_text = f"""╭━━━━❰🤖 Bot Inteligente - ADMIN❱━➣
+┣⪼ 🚀 Subidas con Strategy Bridge
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
 ┣⪼ 🏫 Plataforma: {platform_name}
-{proxy_status}{duration_info}┣⪼ 📤 Envía enlaces HTTP/HTTPS
+┣⪼ 🌐 Conexión: Directa (Sin proxy)
+┣⪼ 🎯 Estrategia: Automática
+┣⪼ ⏱️ Enlaces: 3 días
+
+┣⪼ 🔍 COMANDOS ANÁLISIS:
+┣⪼ /bridge_analyze - Estado plataformas
+┣⪼ /bridge_strategy - Estrategia actual
 
 ┣⪼ ⚙️ CONFIGURACIÓN RÁPIDA:
-┣⪼ /moodle_eva - EVA
-┣⪼ /moodle_cursos - CURSOS  
-┣⪼ /moodle_cened - CENED
-
-┣⪼ 🔧 COMANDOS PROXY:
-┣⪼ /proxy - Configurar proxy
-┣⪼ /proxy_test - Probar proxy
-┣⪼ /proxy_clear - Conexión directa
+┣⪼ /moodle_eva - EVA (vía bridge)
+┣⪼ /moodle_cursos - CURSOS (vía bridge)  
+┣⪼ /moodle_cened - CENED (directo)
 
 ┣⪼ 👥 GESTIÓN DE USUARIOS:
-┣⪼ /adduserconfig - Agregar y configurar
-┣⪼ /banuser - Eliminar usuario(s)
+┣⪼ /adduserconfig - Agregar usuarios
+┣⪼ /banuser - Eliminar usuarios
 ┣⪼ /getdb - Base de datos
-
-┣⪼ ⚡ CONFIGURACIÓN AVANZADA:
-┣⪼ /myuser - Mi configuración
-┣⪼ /zips - Tamaño de partes
-┣⪼ /account - Cuenta Moodle
-┣⪼ /host - Servidor Moodle
-┣⪼ /repoid - ID Repositorio
-┣⪼ /uptype - Tipo de subida
 
 ┣⪼ 📚 COMANDOS GENERALES:
 ┣⪼ /tutorial - Guía completa
 ╰━━━━━━━━━━━━━━━➣"""
             else:
-                welcome_text = f"""╭━━━━❰🤖 Bot de Moodle❱━➣
-┣⪼ 🚀 Subidas a Moodle/Cloud
+                welcome_text = f"""╭━━━━❰🤖 Bot Inteligente❱━➣
+┣⪼ 🚀 Subidas con Strategy Bridge  
 ┣⪼ 👨‍💻 Desarrollado por: @Eliel_21
 ┣⪼ 🏫 Plataforma: {platform_name}
-{proxy_status}{duration_info}┣⪼ 📤 Envía enlaces HTTP/HTTPS
+┣⪼ 🌐 Conexión: Directa
+┣⪼ 🎯 Estrategia: Automática
+┣⪼ ⏱️ Enlaces: 3 días
+┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
 ┣⪼ 📝 COMANDOS DISPONIBLES:
 ┣⪼ /start - Información del bot
@@ -1345,88 +1219,6 @@ def onmessage(update,bot:ObigramClient):
             
             bot.deleteMessage(message.chat.id, message.message_id)
             bot.sendMessage(update.message.chat.id, welcome_text, parse_mode='HTML')
-        elif '/files' == msgText and user_info['cloudtype']=='moodle':
-             if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-             proxy = ProxyCloud.parse(user_info['proxy'])
-             client = MoodleClient(user_info['moodle_user'],
-                                   user_info['moodle_password'],
-                                   user_info['moodle_host'],
-                                   user_info['moodle_repo_id'],proxy=proxy)
-             loged = client.login()
-             if loged:
-                 files = client.getEvidences()
-                 filesInfo = infos.createFilesMsg(files)
-                 bot.editMessageText(message,filesInfo, parse_mode='HTML')
-                 client.logout()
-             else:
-                bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')
-        elif '/txt_' in msgText and user_info['cloudtype']=='moodle':
-             if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-             findex = str(msgText).split('_')[1]
-             findex = int(findex)
-             proxy = ProxyCloud.parse(user_info['proxy'])
-             client = MoodleClient(user_info['moodle_user'],
-                                   user_info['moodle_password'],
-                                   user_info['moodle_host'],
-                                   user_info['moodle_repo_id'],proxy=proxy)
-             loged = client.login()
-             if loged:
-                 evidences = client.getEvidences()
-                 if 0 <= findex < len(evidences):
-                     evindex = evidences[findex]
-                     txtname = evindex['name']+'.txt'
-                     
-                     bot.deleteMessage(message.chat.id, message.message_id)
-                     
-                     sendTxt(txtname, evindex['files'], update, bot)
-                 else:
-                     bot.editMessageText(message,'<b>❌ Índice no válido</b>', parse_mode='HTML')
-                 client.logout()
-             else:
-                bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')
-             pass
-        elif '/del_' in msgText and user_info['cloudtype']=='moodle':
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            findex = int(str(msgText).split('_')[1])
-            proxy = ProxyCloud.parse(user_info['proxy'])
-            client = MoodleClient(user_info['moodle_user'],
-                                   user_info['moodle_password'],
-                                   user_info['moodle_host'],
-                                   user_info['moodle_repo_id'],
-                                   proxy=proxy)
-            loged = client.login()
-            if loged:
-                evfile = client.getEvidences()[findex]
-                client.deleteEvidence(evfile)
-                client.logout()
-                bot.editMessageText(message,'<b>🗑️ Archivo eliminado</b>', parse_mode='HTML')
-            else:
-                bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')
-        elif '/delall' in msgText and user_info['cloudtype']=='moodle':
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            proxy = ProxyCloud.parse(user_info['proxy'])
-            client = MoodleClient(user_info['moodle_user'],
-                                   user_info['moodle_password'],
-                                   user_info['moodle_host'],
-                                   user_info['moodle_repo_id'],
-                                   proxy=proxy)
-            loged = client.login()
-            if loged:
-                evfiles = client.getEvidences()
-                for item in evfiles:
-                	client.deleteEvidence(item)
-                client.logout()
-                bot.editMessageText(message,'<b>🗑️ Todos los archivos eliminados</b>', parse_mode='HTML')
-            else:
-                bot.editMessageText(message,'<b>❌ Error de conexión</b>\n• Verifique su cuenta\n• Servidor: '+client.path, parse_mode='HTML')       
         elif 'http' in msgText:
             url = msgText
             ddl(update,bot,message,url,file_name='',thread=thread,jdb=jdb)
@@ -1471,6 +1263,9 @@ def main():
     health_thread.start()
     
     print(f"🚀 Bot starting with health check on port {port}")
+    print("🎯 Modo: Strategy Bridge System")
+    print("🌐 Conexión: Directa (sin proxy)")
+    print("🏫 Plataformas: EVA, CURSOS, CENED")
     
     bot.run()
 
