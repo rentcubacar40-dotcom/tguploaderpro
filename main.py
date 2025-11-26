@@ -208,15 +208,22 @@ class SmartAcademicBridge:
                     args=args
                 )
                 
-                if result:
-                    return {
-                        'strategy': 'direct_upload',
-                        'platform': target_platform,
-                        'url': result[1]['url'],
-                        'efficiency': 'high',
-                        'message': f'✅ Subida directa a {target_platform.upper()}',
-                        'success': True
-                    }
+                if result and len(result) >= 2:
+                    itemid, filedata = result
+                    if filedata and 'url' in filedata:
+                        return {
+                            'strategy': 'direct_upload',
+                            'platform': target_platform,
+                            'url': filedata['url'],
+                            'efficiency': 'high',
+                            'message': f'✅ Subida directa a {target_platform.upper()}',
+                            'success': True,
+                            'filedata': filedata
+                        }
+                    else:
+                        return {'error': 'No se obtuvo URL del archivo'}
+                else:
+                    return {'error': 'Estructura de resultado inválida'}
                     
         except Exception as e:
             print(f"Direct upload failed: {e}")
@@ -247,50 +254,57 @@ class SmartAcademicBridge:
                     args=args
                 )
                 
-                if bridge_result:
-                    bridge_url = bridge_result[1]['url']
-                    
-                    # 2. Crear página de enlace en plataforma objetivo
-                    link_page = self._create_link_page(file_path, bridge_url, bridge_platform)
-                    temp_html = f"temp_link_{os.path.basename(file_path)}.html"
-                    
-                    with open(temp_html, 'w', encoding='utf-8') as f:
-                        f.write(link_page)
-                    
-                    # 3. Subir página de enlace a plataforma objetivo
-                    target_config = self.platforms[target_platform]
-                    
-                    # 🚨 CONEXIÓN DIRECTA - SIN PROXY
-                    target_client = MoodleClient(
-                        target_config['user'],
-                        target_config['password'], 
-                        target_config['host'],
-                        target_config['repo_id']
-                    )
-                    
-                    target_upload_success = False
-                    target_url = None
-                    
-                    if target_client.login():
-                        target_result = target_client.upload_file_draft(temp_html)
-                        if target_result:
-                            target_url = target_result[1]['url']
-                            target_upload_success = True
-                    
-                    # Limpiar archivo temporal
-                    os.unlink(temp_html)
-                    
-                    return {
-                        'strategy': 'cross_platform_link',
-                        'bridge_platform': bridge_platform,
-                        'target_platform': target_platform, 
-                        'bridge_url': bridge_url,
-                        'target_url': target_url,
-                        'target_success': target_upload_success,
-                        'efficiency': 'high' if target_upload_success else 'medium',
-                        'message': f'🔗 Enlace {bridge_platform.upper()} → {target_platform.upper()}',
-                        'success': True
-                    }
+                if bridge_result and len(bridge_result) >= 2:
+                    itemid, bridge_filedata = bridge_result
+                    if bridge_filedata and 'url' in bridge_filedata:
+                        bridge_url = bridge_filedata['url']
+                        
+                        # 2. Crear página de enlace en plataforma objetivo
+                        link_page = self._create_link_page(file_path, bridge_url, bridge_platform)
+                        temp_html = f"temp_link_{os.path.basename(file_path)}.html"
+                        
+                        with open(temp_html, 'w', encoding='utf-8') as f:
+                            f.write(link_page)
+                        
+                        # 3. Subir página de enlace a plataforma objetivo
+                        target_config = self.platforms[target_platform]
+                        
+                        # 🚨 CONEXIÓN DIRECTA - SIN PROXY
+                        target_client = MoodleClient(
+                            target_config['user'],
+                            target_config['password'], 
+                            target_config['host'],
+                            target_config['repo_id']
+                        )
+                        
+                        target_upload_success = False
+                        target_url = None
+                        
+                        if target_client.login():
+                            target_result = target_client.upload_file_draft(temp_html)
+                            if target_result and len(target_result) >= 2:
+                                target_itemid, target_filedata = target_result
+                                if target_filedata and 'url' in target_filedata:
+                                    target_url = target_filedata['url']
+                                    target_upload_success = True
+                        
+                        # Limpiar archivo temporal
+                        try:
+                            os.unlink(temp_html)
+                        except: pass
+                        
+                        return {
+                            'strategy': 'cross_platform_link',
+                            'bridge_platform': bridge_platform,
+                            'target_platform': target_platform, 
+                            'bridge_url': bridge_url,
+                            'target_url': target_url,
+                            'target_success': target_upload_success,
+                            'efficiency': 'high' if target_upload_success else 'medium',
+                            'message': f'🔗 Enlace {bridge_platform.upper()} → {target_platform.upper()}',
+                            'success': True,
+                            'bridge_filedata': bridge_filedata
+                        }
                     
         except Exception as e:
             print(f"Cross-platform link failed: {e}")
@@ -314,14 +328,18 @@ class SmartAcademicBridge:
                 bridge_config['repo_id']
             )
             
-            bridge_client.login()
-            bridge_result = bridge_client.upload_file_draft(
-                file_path,
-                progressfunc=progressfunc,
-                args=args
-            )
-            
-            bridge_url = bridge_result[1]['url'] if bridge_result else None
+            bridge_url = None
+            if bridge_client.login():
+                bridge_result = bridge_client.upload_file_draft(
+                    file_path,
+                    progressfunc=progressfunc,
+                    args=args
+                )
+                
+                if bridge_result and len(bridge_result) >= 2:
+                    itemid, bridge_filedata = bridge_result
+                    if bridge_filedata and 'url' in bridge_filedata:
+                        bridge_url = bridge_filedata['url']
             
             # Intentar subir a plataforma objetivo (puede fallar)
             target_url = None
@@ -338,9 +356,11 @@ class SmartAcademicBridge:
             
             if target_client.login():
                 target_result = target_client.upload_file_draft(file_path)
-                if target_result:
-                    target_url = target_result[1]['url']
-                    target_success = True
+                if target_result and len(target_result) >= 2:
+                    target_itemid, target_filedata = target_result
+                    if target_filedata and 'url' in target_filedata:
+                        target_url = target_filedata['url']
+                        target_success = True
             
             return {
                 'strategy': 'mirror_upload',
@@ -383,18 +403,21 @@ class SmartAcademicBridge:
                     args=args
                 )
                 
-                if bridge_result:
-                    bridge_url = bridge_result[1]['url']
-                    
-                    return {
-                        'strategy': 'url_resource',
-                        'bridge_platform': bridge_platform,
-                        'target_platform': target_platform,
-                        'bridge_url': bridge_url,
-                        'efficiency': 'medium',
-                        'message': f'📎 Recurso URL en {bridge_platform.upper()}',
-                        'success': True
-                    }
+                if bridge_result and len(bridge_result) >= 2:
+                    itemid, bridge_filedata = bridge_result
+                    if bridge_filedata and 'url' in bridge_filedata:
+                        bridge_url = bridge_filedata['url']
+                        
+                        return {
+                            'strategy': 'url_resource',
+                            'bridge_platform': bridge_platform,
+                            'target_platform': target_platform,
+                            'bridge_url': bridge_url,
+                            'efficiency': 'medium',
+                            'message': f'📎 Recurso URL en {bridge_platform.upper()}',
+                            'success': True,
+                            'filedata': bridge_filedata
+                        }
                     
         except Exception as e:
             print(f"URL resource failed: {e}")
@@ -606,9 +629,6 @@ def processUploadFiles(filename, filesize, files, update, bot, message, thread=N
         user_info = jdb.get_user(update.message.sender.username)
         cloudtype = user_info['cloudtype']
         
-        # 🚨 DESACTIVAR PROXY - Usar estrategia bridge
-        proxy = None
-        
         if cloudtype == 'moodle':
             # 🎯 USAR ESTRATEGIA INTELIGENTE
             smart_bridge = SmartAcademicBridge()
@@ -618,6 +638,8 @@ def processUploadFiles(filename, filesize, files, update, bot, message, thread=N
                 if thread and thread.getStore('stop'):
                     break
                     
+                print(f"📦 Procesando archivo {i+1}/{len(files)}: {os.path.basename(file)}")
+                
                 # Ejecutar estrategia inteligente
                 result = smart_bridge.smart_upload(
                     file,
@@ -626,19 +648,33 @@ def processUploadFiles(filename, filesize, files, update, bot, message, thread=N
                     args=(bot, message, filename, thread, (i+1, len(files), filename))
                 )
                 
-                if result and 'success' in result and result['success']:
-                    results.append(result)
-                else:
-                    print(f"❌ Estrategia falló para {file}: {result.get('error', 'Unknown error')}")
+                print(f"🔍 Resultado estrategia: {result}")
                 
-                # Limpiar archivo después de subir
+                if result and result.get('success'):
+                    results.append(result)
+                    print(f"✅ Éxito con estrategia: {result.get('strategy')}")
+                else:
+                    print(f"❌ Estrategia falló, intentando subida directa...")
+                    # Subida directa de emergencia
+                    direct_result = _emergency_direct_upload(file, user_info, uploadFile, 
+                                                           (bot, message, filename, thread, (i+1, len(files), filename)))
+                    if direct_result:
+                        results.append(direct_result)
+                        print("✅ Subida directa exitosa")
+                    else:
+                        print("❌ Subida directa también falló")
+                
+                # Limpiar archivo
                 try:
                     os.unlink(file)
-                except: pass
+                    print("🧹 Archivo temporal eliminado")
+                except Exception as e:
+                    print(f"⚠️ Error eliminando archivo: {e}")
             
             if thread and thread.getStore('stop'):
                 return None
                 
+            print(f"📊 Proceso completado. Resultados: {len(results)}")
             return results
             
         elif cloudtype == 'cloud':
@@ -651,7 +687,7 @@ def processUploadFiles(filename, filesize, files, update, bot, message, thread=N
             user = user_info['moodle_user']
             passw = user_info['moodle_password']
             remotepath = user_info['dir']
-            client = NexCloudClient.NexCloudClient(user,passw,host,proxy=proxy)
+            client = NexCloudClient.NexCloudClient(user,passw,host,proxy=None)
             loged = client.login()
             if not loged:
                 bot.editMessageText(message,'<b>❌ Error en la nube</b>', parse_mode='HTML')
@@ -680,7 +716,63 @@ def processUploadFiles(filename, filesize, files, update, bot, message, thread=N
             return filesdata
         return None
     except Exception as ex:
+        print(f"❌ Error en processUploadFiles: {ex}")
         bot.editMessageText(message,f'<b>❌ Error</b>\n<code>{str(ex)}</code>', parse_mode='HTML')
+        return None
+
+def _emergency_direct_upload(file_path, user_info, progressfunc=None, args=()):
+    """Subida directa de emergencia cuando todo falla"""
+    try:
+        print(f"🆘 SUBIDA DIRECTA DE EMERGENCIA: {os.path.basename(file_path)}")
+        
+        host = user_info['moodle_host']
+        user = user_info['moodle_user']
+        password = user_info['moodle_password']
+        repo_id = user_info.get('moodle_repo_id', 4)
+        
+        print(f"🔐 Conectando a: {host}")
+        client = MoodleClient(user, password, host, repo_id)
+        
+        # Test de conexión
+        if not client.test_connection():
+            print("❌ No se puede conectar a la plataforma")
+            return None
+            
+        print("🔐 Iniciando login...")
+        if client.login():
+            print("✅ Login exitoso")
+            
+            # Usar upload_file_draft que ahora debería existir
+            print("📤 Iniciando subida...")
+            result = client.upload_file_draft(
+                file_path,
+                progressfunc=progressfunc,
+                args=args
+            )
+            
+            print(f"📦 Resultado crudo: {result}")
+            
+            if result and len(result) >= 2:
+                itemid, filedata = result
+                if filedata and 'url' in filedata:
+                    return {
+                        'strategy': 'emergency_direct',
+                        'platform': 'direct',
+                        'url': filedata['url'],
+                        'efficiency': 'medium', 
+                        'message': '✅ Subida directa de emergencia',
+                        'success': True,
+                        'filedata': filedata
+                    }
+            
+            print("❌ Estructura de resultado inválida")
+            return None
+        else:
+            print("❌ Login fallido")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Error en subida de emergencia: {e}")
         return None
 
 def processFile(update,bot,message,file,thread=None,jdb=None):
@@ -831,55 +923,61 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         print(f"Error en processFile: {ex}")
 
 def _process_bridge_results(results, original_filename, file_size, file_upload_count, update, bot, message, user_info):
-    """Procesar resultados de estrategia bridge"""
+    """Procesar resultados de estrategia bridge - VERSIÓN MEJORADA"""
     try:
-        successful_results = [r for r in results if r and 'success' in r and r['success']]
+        if not results:
+            bot.editMessageText(message, "❌ No se obtuvieron resultados de subida")
+            return None
+            
+        successful_results = [r for r in results if r and r.get('success')]
         
         if not successful_results:
-            bot.editMessageText(message, "❌ Todas las estrategias fallaron")
+            error_msg = "❌ Todas las subidas fallaron\n"
+            for i, result in enumerate(results):
+                if result and 'error' in result:
+                    error_msg += f"\n• Intento {i+1}: {result['error']}"
+                else:
+                    error_msg += f"\n• Intento {i+1}: Error desconocido"
+            
+            bot.editMessageText(message, error_msg)
             return None
         
         # Construir mensaje de éxito
         success_count = len(successful_results)
-        strategies_used = set(r['strategy'] for r in successful_results)
-        platforms_used = set()
         
-        for r in successful_results:
-            if 'bridge_platform' in r:
-                platforms_used.add(r['bridge_platform'].upper())
-            if 'target_platform' in r:
-                platforms_used.add(r['target_platform'].upper())
-            if 'platform' in r:
-                platforms_used.add(r['platform'].upper())
-        
-        # Mensaje resumen
         summary_msg = f"""
-🎯 **Estrategia Inteligente Exitosa**
+🎯 **Subida Completada**
 
 📊 **Resumen:**
-• 📁 Archivos procesados: {success_count}
-• 🎯 Estrategias: {', '.join(strategies_used)}
-• 🌐 Plataformas: {', '.join(platforms_used)}
-• ⚡ Eficiencia: {successful_results[0].get('efficiency', 'alta').upper()}
+• 📁 Archivo: {original_filename}
+• 📦 Tamaño: {sizeof_fmt(file_size)}
+• ✅ Subidas exitosas: {success_count}
+• 🎯 Estrategias usadas: {', '.join(set(r.get('strategy', 'desconocida') for r in successful_results))}
 
-🔗 **Resultados:**"""
+🔗 **Enlaces generados:**"""
         
-        # Detalles por resultado
         all_urls = []
         for i, result in enumerate(successful_results):
-            result_msg = f"\n\n📄 **Resultado {i+1}:**"
-            result_msg += f"\n• 🎯 Estrategia: {result['strategy']}"
-            result_msg += f"\n• 📝 Mensaje: {result['message']}"
+            result_msg = f"\n\n📄 **Enlace {i+1}:**"
+            result_msg += f"\n• 🎯 Método: {result.get('strategy', 'directa')}"
+            result_msg += f"\n• 📝 Estado: {result.get('message', 'Completado')}"
             
-            if 'bridge_url' in result:
-                result_msg += f"\n• 🌉 Bridge: {result['bridge_url']}"
-                all_urls.append({'name': f"{original_filename} (Bridge)", 'directurl': result['bridge_url']})
-            if 'target_url' in result and result['target_url']:
-                result_msg += f"\n• 🎯 Target: {result['target_url']}"
-                all_urls.append({'name': f"{original_filename} (Target)", 'directurl': result['target_url']})
+            # Extraer URL de diferentes formas
+            file_url = None
             if 'url' in result:
-                result_msg += f"\n• 📍 Directo: {result['url']}"
-                all_urls.append({'name': original_filename, 'directurl': result['url']})
+                file_url = result['url']
+            elif 'filedata' in result and 'url' in result['filedata']:
+                file_url = result['filedata']['url']
+            elif 'bridge_url' in result:
+                file_url = result['bridge_url']
+            elif 'target_url' in result:
+                file_url = result['target_url']
+                
+            if file_url:
+                result_msg += f"\n• 🔗 URL: {file_url}"
+                all_urls.append({'name': f"{original_filename} ({result.get('strategy', 'directa')})", 'directurl': file_url})
+            else:
+                result_msg += f"\n• ❌ No se obtuvo URL"
             
             summary_msg += result_msg
         
@@ -892,11 +990,14 @@ def _process_bridge_results(results, original_filename, file_size, file_upload_c
             bot.sendMessage(update.message.chat.id, filesInfo, parse_mode='html')
             txtname = original_filename.split('.')[0] + '.txt'
             sendTxt(txtname, all_urls, update, bot)
+        else:
+            bot.sendMessage(update.message.chat.id, "⚠️ No se generaron enlaces descargables")
         
         return successful_results
         
     except Exception as e:
-        print(f"Error procesando resultados bridge: {e}")
+        print(f"❌ Error procesando resultados: {e}")
+        bot.editMessageText(message, f"❌ Error al procesar resultados: {str(e)}")
         return None
 
 def _process_traditional_results(client, original_filename, file_size, file_upload_count, update, bot, message, user_info):
