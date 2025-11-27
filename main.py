@@ -316,41 +316,76 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             compresingInfo = infos.createCompresing(file,file_size,max_file_size)
             bot.editMessageText(message,compresingInfo)
             
-            # CREAR ARCHIVO TEMPORAL CON NOMBRE CORRECTO
-            temp_dir = "temp_" + createID()
-            os.makedirs(temp_dir, exist_ok=True)
+            # COMPRESIÓN NATIVA - LECTURA POR CHUNKS
+            zip_files = []
+            part_number = 1
             
-            # Copiar el archivo a un directorio temporal con su nombre original
-            temp_file_path = os.path.join(temp_dir, original_filename)
-            import shutil
-            shutil.copy2(file, temp_file_path)
-            
-            zipname = base_name + createID()
-            mult_file = zipfile.MultiFile(zipname, max_file_size)
-            
-            # CREAR ZIP CON EL ARCHIVO Y SU NOMBRE ORIGINAL
-            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLated) as zipf:
-                # Agregar el archivo con su nombre original preservado
-                zipf.write(temp_file_path, arcname=original_filename)
-            
-            mult_file.close()
-            
-            # LIMPIAR ARCHIVO TEMPORAL
             try:
-                shutil.rmtree(temp_dir)
-            except: pass
+                # Calcular número total de partes para mostrar progreso
+                total_parts = (file_size + max_file_size - 1) // max_file_size
+                
+                with open(file, 'rb') as original_file:
+                    while True:
+                        if thread and thread.getStore('stop'):
+                            break
+                            
+                        # Leer chunk del tamaño máximo permitido
+                        chunk = original_file.read(max_file_size)
+                        if not chunk:
+                            break
+                        
+                        # Actualizar información de compresión
+                        current_progress = (part_number - 1) / total_parts * 100
+                        progress_bar = create_progress_bar(current_progress, 15)
+                        compresingInfo = format_s1_message("📚 Comprimiendo...", [
+                            f"🔖 Nombre: {original_filename}",
+                            f"📦 Progreso: [{progress_bar}] {current_progress:.1f}%",
+                            f"🗂 Parte {part_number} de {total_parts}",
+                            f"🚫 Cancelar: /cancel_{thread.cancel_id}" if hasattr(thread, 'cancel_id') else ""
+                        ])
+                        bot.editMessageText(message, compresingInfo)
+                        
+                        # Crear nombre de archivo ZIP para esta parte
+                        zip_filename = f"{base_name}_part{part_number}.zip"
+                        
+                        # Crear archivo ZIP para esta parte
+                        with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                            # Agregar el chunk como el archivo original
+                            zipf.writestr(original_filename, chunk)
+                        
+                        zip_files.append(zip_filename)
+                        part_number += 1
+                
+                # Actualizar mensaje final de compresión
+                compresingInfo = format_s1_message("✅ Compresión Completada", [
+                    f"🔖 Nombre: {original_filename}",
+                    f"🗂 Tamaño Total: {sizeof_fmt(file_size)}",
+                    f"📂 Tamaño Partes: {sizeof_fmt(max_file_size)}",
+                    f"💾 Cantidad Partes: {len(zip_files)}"
+                ])
+                bot.editMessageText(message, compresingInfo)
+                
+            except Exception as compression_error:
+                print(f"Error en compresión: {compression_error}")
+                # Limpiar archivos temporales en caso de error
+                for zip_file in zip_files:
+                    try:
+                        if os.path.exists(zip_file):
+                            os.unlink(zip_file)
+                    except: pass
+                raise compression_error
             
             # Usar el nombre base original para la subida
-            client = processUploadFiles(original_filename, file_size, mult_file.files, update, bot, message, thread=thread, jdb=jdb)
+            client = processUploadFiles(original_filename, file_size, zip_files, update, bot, message, thread=thread, jdb=jdb)
             
             try:
                 os.unlink(file)
             except:pass
-            file_upload_count = len(mult_file.files)
+            file_upload_count = len(zip_files)
             
-            # LIMPIAR ARCHIVOS TEMPORALES ZIP
+            # LIMPIAR ARCHIVOS TEMPORALES ZIP después de subir
             try:
-                for zip_file in mult_file.files:
+                for zip_file in zip_files:
                     if os.path.exists(zip_file):
                         os.unlink(zip_file)
             except:pass
@@ -492,10 +527,6 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 
                 # Enviar con parse_mode HTML para que los enlaces sean clickeables
                 bot.sendMessage(message.chat.id, links_message, parse_mode='HTML')
-                
-                # ELIMINAR el envío del mensaje filesInfo para no duplicar enlaces
-                # filesInfo = infos.createFileMsg(original_filename,files)
-                # bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
                 
                 txtname = base_name + '.txt'
                 sendTxt(txtname,files,update,bot)
