@@ -369,8 +369,14 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             current_total = getUser.get('total_mb_used', 0)
             new_total = current_total + file_size_mb
             getUser['total_mb_used'] = new_total
-            getUser['last_upload'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             getUser['upload_count'] = getUser.get('upload_count', 0) + 1
+            getUser['last_upload'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            getUser['last_activity'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Si es la primera vez que sube, guardar fecha de primera subida
+            if not getUser.get('first_upload'):
+                getUser['first_upload'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
             jdb.save_data_user(username, getUser)
             jdb.save()
         except Exception as e:
@@ -459,7 +465,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                         # Si es un solo archivo: Solo el nombre
                         file_display = f"{original_filename}"
                     
-                    # Crear enlace HTML
+                    # Crear enlace HTML (SIN el emoji 📎)
                     link = f"┣⪼ <a href='{f['directurl']}'>{file_display}</a>\n"
                     links_message += link
                 
@@ -803,7 +809,8 @@ def onmessage(update,bot:ObigramClient):
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
-            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened'
+            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened',
+            '/botstats'  # Solo bloqueamos botstats para usuarios normales
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -811,7 +818,9 @@ def onmessage(update,bot:ObigramClient):
                            "<b>✅ Comandos disponibles para ti:</b>\n"
                            "• /start - Información del bot\n"
                            "• /tutorial - Guía de uso completo\n"
-                           "• Enlaces HTTP/HTTPS para subir archivos",
+                           "• Enlaces HTTP/HTTPS para subir archivos\n"
+                           "• /stats - Ver mis estadísticas\n"
+                           "• /ranking - Ver ranking general",
                            parse_mode='HTML')
             return
 
@@ -820,7 +829,11 @@ def onmessage(update,bot:ObigramClient):
             bot.sendMessage(update.message.chat.id,
                            "<b>🤖 Bot de Subida de Archivos</b>\n\n"
                            "📤 <b>Para subir archivos:</b> Envía un enlace HTTP/HTTPS\n\n"
-                           "📝 <b>Para ver comandos disponibles:</b> Usa /start",
+                           "📝 <b>Comandos disponibles:</b>\n"
+                           "• /start - Información del bot\n"
+                           "• /tutorial - Guía de uso completo\n"
+                           "• /stats - Ver mis estadísticas\n"
+                           "• /ranking - Ver ranking general",
                            parse_mode='HTML')
             return
 
@@ -1116,6 +1129,144 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ Error al cancelar</b>', parse_mode='HTML')
             return
 
+        # COMANDO PARA VER ESTADÍSTICAS DE USUARIO
+        if '/stats' in msgText:
+            try:
+                parts = str(msgText).split(' ')
+                if len(parts) > 1:
+                    # Si especificó un usuario, verificar si es admin
+                    target_user = parts[1].replace('@', '')
+                    if not jdb.is_admin(username):
+                        bot.sendMessage(update.message.chat.id, '<b>❌ Solo administradores pueden ver stats de otros usuarios</b>', parse_mode='HTML')
+                        return
+                else:
+                    # Si no especificó usuario, ver sus propias stats
+                    target_user = username
+                    
+                user_data = jdb.get_user(target_user)
+                if user_data:
+                    # Calcular tiempo desde primera subida
+                    first_upload = user_data.get('first_upload', 'Nunca')
+                    last_upload = user_data.get('last_upload', 'Nunca')
+                    total_gb = user_data.get('total_mb_used', 0) / 1024
+                    
+                    stats_info = format_s1_message(f"📊 Estadísticas de @{target_user}", [
+                        f"📁 Total subidas: {user_data.get('upload_count', 0)}",
+                        f"💾 Espacio usado: {total_gb:.2f} GB",
+                        f"📅 Primera subida: {first_upload}",
+                        f"🕐 Última subida: {last_upload}",
+                        f"🏫 Plataforma: {get_platform_name(user_data.get('moodle_host', ''))}"
+                    ])
+                    bot.sendMessage(update.message.chat.id, stats_info)
+                else:
+                    bot.sendMessage(update.message.chat.id, f'<b>❌ Usuario @{target_user} no encontrado</b>', parse_mode='HTML')
+            except Exception as e:
+                print(f"Error en stats: {e}")
+                bot.sendMessage(update.message.chat.id, '<b>❌ Error al obtener estadísticas</b>', parse_mode='HTML')
+            return
+
+        # COMANDO PARA VER RANKING DE USUARIOS
+        if '/ranking' in msgText:
+            try:
+                # Crear listas para ranking
+                upload_ranking = []
+                space_ranking = []
+                
+                for user, data in jdb.items.items():
+                    upload_count = data.get('upload_count', 0)
+                    user_space = data.get('total_mb_used', 0)
+                    
+                    if upload_count > 0:
+                        upload_ranking.append({'user': user, 'count': upload_count})
+                        space_ranking.append({'user': user, 'space': user_space})
+                
+                # Ordenar rankings
+                upload_ranking.sort(key=lambda x: x['count'], reverse=True)
+                space_ranking.sort(key=lambda x: x['space'], reverse=True)
+                
+                # Crear mensaje de ranking
+                ranking_message = "╭━━━━❰🏆 Ranking de Usuarios❱━➣\n"
+                
+                # Top 5 subidores
+                ranking_message += "┣━━━━❰📁 Más Subidas❱━➣\n"
+                for i, user_data in enumerate(upload_ranking[:5], 1):
+                    ranking_message += f"┣⪼ {i}. @{user_data['user']} - {user_data['count']} subidas\n"
+                
+                ranking_message += "┣━━━━❰💾 Más Espacio❱━➣\n"
+                for i, user_data in enumerate(space_ranking[:5], 1):
+                    space_gb = user_data['space'] / 1024
+                    ranking_message += f"┣⪼ {i}. @{user_data['user']} - {space_gb:.2f} GB\n"
+                
+                ranking_message += "╰━━━━━━━━━━━━━━━➣"
+                
+                bot.sendMessage(update.message.chat.id, ranking_message)
+                
+            except Exception as e:
+                print(f"Error en ranking: {e}")
+                bot.sendMessage(update.message.chat.id, '<b>❌ Error al generar ranking</b>', parse_mode='HTML')
+            return
+
+        # COMANDO PARA VER ESTADÍSTICAS GENERALES DEL BOT
+        if '/botstats' in msgText:
+            isadmin = jdb.is_admin(username)
+            if isadmin:
+                try:
+                    total_users = len(jdb.items)
+                    total_uploads = 0
+                    total_space = 0
+                    active_users = 0
+                    
+                    # PARA LAS NUEVAS ESTADÍSTICAS
+                    top_uploader = {'user': 'Nadie', 'count': 0}
+                    top_space_user = {'user': 'Nadie', 'space': 0}
+                    current_month = datetime.datetime.now().strftime("%Y-%m")
+                    new_this_month = 0
+                    
+                    for user, data in jdb.items.items():
+                        upload_count = data.get('upload_count', 0)
+                        user_space = data.get('total_mb_used', 0)
+                        
+                        total_uploads += upload_count
+                        total_space += user_space
+                        
+                        # Usuario activo si ha subido algo
+                        if upload_count > 0:
+                            active_users += 1
+                        
+                        # Usuario con más subidas
+                        if upload_count > top_uploader['count']:
+                            top_uploader = {'user': user, 'count': upload_count}
+                        
+                        # Usuario que más espacio usa
+                        if user_space > top_space_user['space']:
+                            top_space_user = {'user': user, 'space': user_space}
+                        
+                        # Usuarios nuevos este mes
+                        first_upload = data.get('first_upload', '')
+                        if first_upload and current_month in first_upload:
+                            new_this_month += 1
+                    
+                    total_gb = total_space / 1024
+                    top_space_gb = top_space_user['space'] / 1024
+                    
+                    bot_stats = format_s1_message("🤖 Estadísticas del Bot", [
+                        f"👥 Total usuarios: {total_users}",
+                        f"🆕 Nuevos este mes: {new_this_month}",
+                        f"✅ Usuarios activos: {active_users}",
+                        f"📁 Total subidas: {total_uploads}",
+                        f"💾 Espacio total: {total_gb:.2f} GB",
+                        f"📊 Promedio por usuario: {total_gb/total_users if total_users > 0 else 0:.2f} GB",
+                        f"🏆 Top subidor: @{top_uploader['user']} ({top_uploader['count']} subidas)",
+                        f"💽 Mayor espacio: @{top_space_user['user']} ({top_space_gb:.2f} GB)"
+                    ])
+                    bot.sendMessage(update.message.chat.id, bot_stats)
+                except Exception as e:
+                    print(f"Error en botstats: {e}")
+                    bot.sendMessage(update.message.chat.id, '<b>❌ Error al obtener estadísticas del bot</b>', parse_mode='HTML')
+            else:
+                bot.sendMessage(update.message.chat.id, '<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
+            return
+
         message = bot.sendMessage(update.message.chat.id,'<b>⏳ Procesando...</b>', parse_mode='HTML')
 
         thread.store('msg',message)
@@ -1148,6 +1299,12 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /banuser - Eliminar usuario(s)
 ┣⪼ /getdb - Base de datos
 
+┣⪼ 📊 ESTADÍSTICAS:
+┣⪼ /stats - Mis estadísticas
+┣⪼ /stats @user - Stats de usuario
+┣⪼ /ranking - Ranking general
+┣⪼ /botstats - Stats del bot
+
 ┣⪼ ⚡ CONFIGURACIÓN AVANZADA:
 ┣⪼ /myuser - Mi configuración
 ┣⪼ /zips - Tamaño de partes
@@ -1169,6 +1326,8 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ 📝 COMANDOS DISPONIBLES:
 ┣⪼ /start - Información del bot
 ┣⪼ /tutorial - Guía completa
+┣⪼ /stats - Mis estadísticas
+┣⪼ /ranking - Ranking general
 ╰━━━━━━━━━━━━━━━➣"""
             
             bot.deleteMessage(message.chat.id, message.message_id)
