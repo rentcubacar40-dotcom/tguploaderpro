@@ -829,7 +829,7 @@ def onmessage(update,bot:ObigramClient):
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
             '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened',
-            '/botstats', '/stats'  # Ahora /stats también está restringido para ver otros usuarios
+            '/botstats', '/stats_info'  # Ahora stats_info está restringido para admin
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -1146,19 +1146,59 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ Error al cancelar</b>', parse_mode='HTML')
             return
 
-        # COMANDO PARA VER ESTADÍSTICAS DE USUARIO - SOLO PROPIAS STATS PARA USUARIOS NORMALES
-        if '/stats' in msgText:
+        # COMANDO STATS - PARA QUE USUARIOS VEAN SUS PROPIAS ESTADÍSTICAS
+        if '/stats' in msgText and not '/stats_info' in msgText:
+            try:
+                # Usar siempre el usuario actual (no permite ver otros usuarios)
+                target_user = username
+                    
+                user_data = jdb.get_user(target_user)
+                if user_data:
+                    # Calcular tiempo desde primera subida
+                    first_upload = user_data.get('first_upload', 'Nunca')
+                    last_upload = user_data.get('last_upload', 'Nunca')
+                    total_mb = user_data.get('total_mb_used', 0)
+                    total_gb = total_mb / 1024
+                    
+                    # Mostrar MB o GB según el tamaño
+                    if total_mb < 1024:
+                        space_display = f"{total_mb:.2f} MB"
+                    else:
+                        space_display = f"{total_gb:.2f} GB"
+                    
+                    stats_info = format_s1_message("📊 Mis Estadísticas", [
+                        f"📁 Total subidas: {user_data.get('upload_count', 0)}",
+                        f"💾 Espacio usado: {space_display}",
+                        f"📅 Primera subida: {first_upload}",
+                        f"🕐 Última subida: {last_upload}",
+                        f"🏫 Plataforma: {get_platform_name(user_data.get('moodle_host', ''))}"
+                    ])
+                    bot.sendMessage(update.message.chat.id, stats_info)
+                else:
+                    bot.sendMessage(update.message.chat.id, '<b>❌ No se encontraron estadísticas</b>', parse_mode='HTML')
+            except Exception as e:
+                print(f"Error en stats: {e}")
+                bot.sendMessage(update.message.chat.id, '<b>❌ Error al obtener estadísticas</b>', parse_mode='HTML')
+            return
+
+        # COMANDO STATS_INFO - PARA ADMINISTRADORES VER ESTADÍSTICAS DE USUARIOS ESPECÍFICOS
+        if '/stats_info' in msgText:
+            isadmin = jdb.is_admin(username)
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id, '<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+                
             try:
                 parts = str(msgText).split(' ')
                 if len(parts) > 1:
-                    # Si especificó un usuario, verificar si es admin
                     target_user = parts[1].replace('@', '')
-                    if not jdb.is_admin(username):
-                        bot.sendMessage(update.message.chat.id, '<b>❌ Solo administradores pueden ver stats de otros usuarios</b>', parse_mode='HTML')
-                        return
                 else:
-                    # Si no especificó usuario, ver sus propias stats
-                    target_user = username
+                    bot.sendMessage(update.message.chat.id, 
+                                   '<b>❌ Formato incorrecto</b>\n\n'
+                                   '<b>Uso:</b> <code>/stats_info @usuario</code>\n\n'
+                                   '<b>Ejemplo:</b>\n<code>/stats_info juan</code>', 
+                                   parse_mode='HTML')
+                    return
                     
                 user_data = jdb.get_user(target_user)
                 if user_data:
@@ -1175,18 +1215,24 @@ def onmessage(update,bot:ObigramClient):
                         space_display = f"{total_gb:.2f} GB"
                     
                     stats_info = format_s1_message(f"📊 Estadísticas de @{target_user}", [
+                        f"👤 Usuario: @{target_user}",
                         f"📁 Total subidas: {user_data.get('upload_count', 0)}",
                         f"💾 Espacio usado: {space_display}",
                         f"📅 Primera subida: {first_upload}",
                         f"🕐 Última subida: {last_upload}",
-                        f"🏫 Plataforma: {get_platform_name(user_data.get('moodle_host', ''))}"
+                        f"🏫 Plataforma: {get_platform_name(user_data.get('moodle_host', ''))}",
+                        f"🔧 Tipo de subida: {user_data.get('uploadtype', 'No configurado')}",
+                        f"☁️ Tipo de nube: {user_data.get('cloudtype', 'No configurado')}"
                     ])
                     bot.sendMessage(update.message.chat.id, stats_info)
                 else:
                     bot.sendMessage(update.message.chat.id, f'<b>❌ Usuario @{target_user} no encontrado</b>', parse_mode='HTML')
             except Exception as e:
-                print(f"Error en stats: {e}")
-                bot.sendMessage(update.message.chat.id, '<b>❌ Error al obtener estadísticas</b>', parse_mode='HTML')
+                print(f"Error en stats_info: {e}")
+                bot.sendMessage(update.message.chat.id, 
+                               '<b>❌ Error en el comando</b>\n\n'
+                               '<b>Uso:</b> <code>/stats_info @usuario</code>', 
+                               parse_mode='HTML')
             return
 
         # COMANDO PARA VER ESTADÍSTICAS GENERALES DEL BOT - SOLO ADMIN
@@ -1296,7 +1342,7 @@ def onmessage(update,bot:ObigramClient):
 
 ┣⪼ 📊 ESTADÍSTICAS:
 ┣⪼ /stats - Mis estadísticas
-┣⪼ /stats @user - Stats de usuario
+┣⪼ /stats_info @user - Stats de usuario (Admin)
 ┣⪼ /botstats - Stats del bot
 
 ┣⪼ ⚡ CONFIGURACIÓN AVANZADA:
