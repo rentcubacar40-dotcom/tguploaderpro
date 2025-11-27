@@ -451,8 +451,14 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 links_message = "╭━━━━❰🔗 Enlaces❱━➣\n"
                 
                 for i, f in enumerate(files, 1):
-                    # Formatear el nombre del archivo
-                    file_display = f"Parte {i}"
+                    # Determinar qué nombre mostrar
+                    if len(files) > 1:
+                        # Si hay múltiples partes: "Nombre (Parte X)"
+                        file_display = f"{original_filename} (Parte {i})"
+                    else:
+                        # Si es un solo archivo: Solo el nombre
+                        file_display = f"{original_filename}"
+                    
                     # Crear enlace HTML
                     link = f"┣⪼ <a href='{f['directurl']}'>📎 {file_display}</a>\n"
                     links_message += link
@@ -462,9 +468,9 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 # Enviar con parse_mode HTML para que los enlaces sean clickeables
                 bot.sendMessage(message.chat.id, links_message, parse_mode='HTML')
                 
-                # También enviar el mensaje original de filesInfo si lo necesitas
-                filesInfo = infos.createFileMsg(original_filename,files)
-                bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
+                # ELIMINAR el envío del mensaje filesInfo para no duplicar enlaces
+                # filesInfo = infos.createFileMsg(original_filename,files)
+                # bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
                 
                 txtname = base_name + '.txt'
                 sendTxt(txtname,files,update,bot)
