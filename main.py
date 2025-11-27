@@ -329,7 +329,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             mult_file = zipfile.MultiFile(zipname, max_file_size)
             
             # CREAR ZIP CON EL ARCHIVO Y SU NOMBRE ORIGINAL
-            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
+            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLated) as zipf:
                 # Agregar el archivo con su nombre original preservado
                 zipf.write(temp_file_path, arcname=original_filename)
             
@@ -363,13 +363,23 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         if thread and thread.getStore('stop'):
             return
             
-        # ACTUALIZAR ESTADÍSTICAS DE USUARIO
+        # ACTUALIZAR ESTADÍSTICAS DE USUARIO - CORREGIDO
         try:
-            file_size_mb = file_size / (1024 * 1024)
-            current_total = getUser.get('total_mb_used', 0)
-            new_total = current_total + file_size_mb
-            getUser['total_mb_used'] = new_total
-            getUser['upload_count'] = getUser.get('upload_count', 0) + 1
+            # get_file_size() devuelve BYTES, convertir correctamente a MB
+            file_size_bytes = file_size  # file_size ya está en bytes desde get_file_size()
+            file_size_mb = file_size_bytes / (1024 * 1024)  # Convertir bytes a MB
+            
+            # OBTENER VALORES ACTUALES CORRECTAMENTE
+            current_total_mb = getUser.get('total_mb_used', 0)
+            current_count = getUser.get('upload_count', 0)
+            
+            # CALCULAR NUEVOS VALORES (SUMA ACUMULATIVA)
+            new_total_mb = current_total_mb + file_size_mb
+            new_count = current_count + 1
+            
+            # ACTUALIZAR ESTADÍSTICAS
+            getUser['total_mb_used'] = new_total_mb
+            getUser['upload_count'] = new_count
             getUser['last_upload'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             getUser['last_activity'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
@@ -379,8 +389,17 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             
             jdb.save_data_user(username, getUser)
             jdb.save()
+            
+            # DEBUG: Verificar que se está sumando correctamente
+            print(f"📊 Estadísticas actualizadas - Usuario: {username}")
+            print(f"📁 Archivo: {file_size_bytes} bytes = {file_size_mb:.2f} MB")
+            print(f"💾 Total ANTES: {current_total_mb:.2f} MB")
+            print(f"💾 Total DESPUÉS: {new_total_mb:.2f} MB")
+            print(f"🔢 Subidas ANTES: {current_count}")
+            print(f"🔢 Subidas DESPUÉS: {new_count}")
+            
         except Exception as e:
-            print(f"Error actualizando estadísticas: {e}")
+            print(f"❌ Error actualizando estadísticas: {e}")
             
         bot.editMessageText(message,'<b>📄 Preparando enlaces...</b>', parse_mode='HTML')
         evidname = ''
@@ -810,7 +829,7 @@ def onmessage(update,bot:ObigramClient):
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
             '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened',
-            '/botstats'  # Solo bloqueamos botstats para usuarios normales
+            '/botstats', '/stats'  # Ahora /stats también está restringido para ver otros usuarios
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -819,8 +838,7 @@ def onmessage(update,bot:ObigramClient):
                            "• /start - Información del bot\n"
                            "• /tutorial - Guía de uso completo\n"
                            "• Enlaces HTTP/HTTPS para subir archivos\n"
-                           "• /stats - Ver mis estadísticas\n"
-                           "• /ranking - Ver ranking general",
+                           "• /stats - Ver mis estadísticas",
                            parse_mode='HTML')
             return
 
@@ -832,8 +850,7 @@ def onmessage(update,bot:ObigramClient):
                            "📝 <b>Comandos disponibles:</b>\n"
                            "• /start - Información del bot\n"
                            "• /tutorial - Guía de uso completo\n"
-                           "• /stats - Ver mis estadísticas\n"
-                           "• /ranking - Ver ranking general",
+                           "• /stats - Ver mis estadísticas",
                            parse_mode='HTML')
             return
 
@@ -1129,7 +1146,7 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ Error al cancelar</b>', parse_mode='HTML')
             return
 
-        # COMANDO PARA VER ESTADÍSTICAS DE USUARIO
+        # COMANDO PARA VER ESTADÍSTICAS DE USUARIO - SOLO PROPIAS STATS PARA USUARIOS NORMALES
         if '/stats' in msgText:
             try:
                 parts = str(msgText).split(' ')
@@ -1148,11 +1165,18 @@ def onmessage(update,bot:ObigramClient):
                     # Calcular tiempo desde primera subida
                     first_upload = user_data.get('first_upload', 'Nunca')
                     last_upload = user_data.get('last_upload', 'Nunca')
-                    total_gb = user_data.get('total_mb_used', 0) / 1024
+                    total_mb = user_data.get('total_mb_used', 0)
+                    total_gb = total_mb / 1024
+                    
+                    # Mostrar MB o GB según el tamaño
+                    if total_mb < 1024:
+                        space_display = f"{total_mb:.2f} MB"
+                    else:
+                        space_display = f"{total_gb:.2f} GB"
                     
                     stats_info = format_s1_message(f"📊 Estadísticas de @{target_user}", [
                         f"📁 Total subidas: {user_data.get('upload_count', 0)}",
-                        f"💾 Espacio usado: {total_gb:.2f} GB",
+                        f"💾 Espacio usado: {space_display}",
                         f"📅 Primera subida: {first_upload}",
                         f"🕐 Última subida: {last_upload}",
                         f"🏫 Plataforma: {get_platform_name(user_data.get('moodle_host', ''))}"
@@ -1165,69 +1189,28 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id, '<b>❌ Error al obtener estadísticas</b>', parse_mode='HTML')
             return
 
-        # COMANDO PARA VER RANKING DE USUARIOS
-        if '/ranking' in msgText:
-            try:
-                # Crear listas para ranking
-                upload_ranking = []
-                space_ranking = []
-                
-                for user, data in jdb.items.items():
-                    upload_count = data.get('upload_count', 0)
-                    user_space = data.get('total_mb_used', 0)
-                    
-                    if upload_count > 0:
-                        upload_ranking.append({'user': user, 'count': upload_count})
-                        space_ranking.append({'user': user, 'space': user_space})
-                
-                # Ordenar rankings
-                upload_ranking.sort(key=lambda x: x['count'], reverse=True)
-                space_ranking.sort(key=lambda x: x['space'], reverse=True)
-                
-                # Crear mensaje de ranking
-                ranking_message = "╭━━━━❰🏆 Ranking de Usuarios❱━➣\n"
-                
-                # Top 5 subidores
-                ranking_message += "┣━━━━❰📁 Más Subidas❱━➣\n"
-                for i, user_data in enumerate(upload_ranking[:5], 1):
-                    ranking_message += f"┣⪼ {i}. @{user_data['user']} - {user_data['count']} subidas\n"
-                
-                ranking_message += "┣━━━━❰💾 Más Espacio❱━➣\n"
-                for i, user_data in enumerate(space_ranking[:5], 1):
-                    space_gb = user_data['space'] / 1024
-                    ranking_message += f"┣⪼ {i}. @{user_data['user']} - {space_gb:.2f} GB\n"
-                
-                ranking_message += "╰━━━━━━━━━━━━━━━➣"
-                
-                bot.sendMessage(update.message.chat.id, ranking_message)
-                
-            except Exception as e:
-                print(f"Error en ranking: {e}")
-                bot.sendMessage(update.message.chat.id, '<b>❌ Error al generar ranking</b>', parse_mode='HTML')
-            return
-
-        # COMANDO PARA VER ESTADÍSTICAS GENERALES DEL BOT
+        # COMANDO PARA VER ESTADÍSTICAS GENERALES DEL BOT - SOLO ADMIN
         if '/botstats' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
                 try:
                     total_users = len(jdb.items)
                     total_uploads = 0
-                    total_space = 0
+                    total_space_mb = 0
                     active_users = 0
                     
                     # PARA LAS NUEVAS ESTADÍSTICAS
                     top_uploader = {'user': 'Nadie', 'count': 0}
-                    top_space_user = {'user': 'Nadie', 'space': 0}
+                    top_space_user = {'user': 'Nadie', 'space_mb': 0}
                     current_month = datetime.datetime.now().strftime("%Y-%m")
                     new_this_month = 0
                     
                     for user, data in jdb.items.items():
                         upload_count = data.get('upload_count', 0)
-                        user_space = data.get('total_mb_used', 0)
+                        user_space_mb = data.get('total_mb_used', 0)
                         
                         total_uploads += upload_count
-                        total_space += user_space
+                        total_space_mb += user_space_mb
                         
                         # Usuario activo si ha subido algo
                         if upload_count > 0:
@@ -1238,26 +1221,38 @@ def onmessage(update,bot:ObigramClient):
                             top_uploader = {'user': user, 'count': upload_count}
                         
                         # Usuario que más espacio usa
-                        if user_space > top_space_user['space']:
-                            top_space_user = {'user': user, 'space': user_space}
+                        if user_space_mb > top_space_user['space_mb']:
+                            top_space_user = {'user': user, 'space_mb': user_space_mb}
                         
                         # Usuarios nuevos este mes
                         first_upload = data.get('first_upload', '')
                         if first_upload and current_month in first_upload:
                             new_this_month += 1
                     
-                    total_gb = total_space / 1024
-                    top_space_gb = top_space_user['space'] / 1024
+                    total_gb = total_space_mb / 1024
+                    top_space_gb = top_space_user['space_mb'] / 1024
+                    
+                    # Formatear espacio total
+                    if total_space_mb < 1024:
+                        total_space_display = f"{total_space_mb:.2f} MB"
+                    else:
+                        total_space_display = f"{total_gb:.2f} GB"
+                    
+                    # Formatear espacio del top user
+                    if top_space_user['space_mb'] < 1024:
+                        top_space_display = f"{top_space_user['space_mb']:.2f} MB"
+                    else:
+                        top_space_display = f"{top_space_gb:.2f} GB"
                     
                     bot_stats = format_s1_message("🤖 Estadísticas del Bot", [
                         f"👥 Total usuarios: {total_users}",
                         f"🆕 Nuevos este mes: {new_this_month}",
                         f"✅ Usuarios activos: {active_users}",
                         f"📁 Total subidas: {total_uploads}",
-                        f"💾 Espacio total: {total_gb:.2f} GB",
-                        f"📊 Promedio por usuario: {total_gb/total_users if total_users > 0 else 0:.2f} GB",
+                        f"💾 Espacio total: {total_space_display}",
+                        f"📊 Promedio por usuario: {total_space_mb/total_users if total_users > 0 else 0:.2f} MB",
                         f"🏆 Top subidor: @{top_uploader['user']} ({top_uploader['count']} subidas)",
-                        f"💽 Mayor espacio: @{top_space_user['user']} ({top_space_gb:.2f} GB)"
+                        f"💽 Mayor espacio: @{top_space_user['user']} ({top_space_display})"
                     ])
                     bot.sendMessage(update.message.chat.id, bot_stats)
                 except Exception as e:
@@ -1302,7 +1297,6 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ 📊 ESTADÍSTICAS:
 ┣⪼ /stats - Mis estadísticas
 ┣⪼ /stats @user - Stats de usuario
-┣⪼ /ranking - Ranking general
 ┣⪼ /botstats - Stats del bot
 
 ┣⪼ ⚡ CONFIGURACIÓN AVANZADA:
@@ -1327,7 +1321,6 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /start - Información del bot
 ┣⪼ /tutorial - Guía completa
 ┣⪼ /stats - Mis estadísticas
-┣⪼ /ranking - Ranking general
 ╰━━━━━━━━━━━━━━━➣"""
             
             bot.deleteMessage(message.chat.id, message.message_id)
