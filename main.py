@@ -316,90 +316,43 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             compresingInfo = infos.createCompresing(file,file_size,max_file_size)
             bot.editMessageText(message,compresingInfo)
             
-            # COMPRESIÓN CON 7Z - SIN PROGRESO EN TIEMPO REAL
-            import subprocess
-            seven_zip_files = []
-            part_number = 1
+            # CREAR ARCHIVO TEMPORAL CON NOMBRE CORRECTO
+            temp_dir = "temp_" + createID()
+            os.makedirs(temp_dir, exist_ok=True)
             
+            # Copiar el archivo a un directorio temporal con su nombre original
+            temp_file_path = os.path.join(temp_dir, original_filename)
+            import shutil
+            shutil.copy2(file, temp_file_path)
+            
+            zipname = base_name + createID()
+            mult_file = zipfile.MultiFile(zipname, max_file_size)
+            
+            # CREAR ZIP CON EL ARCHIVO Y SU NOMBRE ORIGINAL
+            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
+                # Agregar el archivo con su nombre original preservado
+                zipf.write(temp_file_path, arcname=original_filename)
+            
+            mult_file.close()
+            
+            # LIMPIAR ARCHIVO TEMPORAL
             try:
-                # Calcular número total de partes
-                total_parts = (file_size + max_file_size - 1) // max_file_size
-                
-                with open(file, 'rb') as original_file:
-                    while True:
-                        if thread and thread.getStore('stop'):
-                            break
-                            
-                        # Leer chunk del tamaño máximo permitido
-                        chunk = original_file.read(max_file_size)
-                        if not chunk:
-                            break
-                        
-                        # Crear archivo temporal para esta parte
-                        temp_part = f"{base_name}_part{part_number}.tmp"
-                        with open(temp_part, 'wb') as temp_file:
-                            temp_file.write(chunk)
-                        
-                        # Crear nombre de archivo 7z para esta parte
-                        seven_zip_filename = f"{base_name}_part{part_number}.7z"
-                        
-                        # Comprimir con 7z usando subprocess
-                        try:
-                            # Comando 7z: comprimir el archivo temporal
-                            cmd = ['7z', 'a', '-t7z', '-m0=lzma2', '-mx=9', seven_zip_filename, temp_part]
-                            subprocess.run(cmd, check=True, capture_output=True)
-                            
-                            # Verificar que el archivo 7z se creó correctamente
-                            if os.path.exists(seven_zip_filename):
-                                seven_zip_files.append(seven_zip_filename)
-                            else:
-                                raise Exception(f"No se pudo crear {seven_zip_filename}")
-                                
-                        except subprocess.CalledProcessError as e:
-                            raise Exception(f"Error en compresión 7z: {e.stderr.decode()}")
-                        
-                        finally:
-                            # Limpiar archivo temporal
-                            try:
-                                if os.path.exists(temp_part):
-                                    os.unlink(temp_part)
-                            except: pass
-                        
-                        part_number += 1
-                
-                # Actualizar mensaje final de compresión
-                compresingInfo = format_s1_message("✅ Compresión Completada", [
-                    f"🔖 Nombre: {original_filename}",
-                    f"🗂 Tamaño Total: {sizeof_fmt(file_size)}",
-                    f"📂 Tamaño Partes: {sizeof_fmt(max_file_size)}",
-                    f"💾 Cantidad Partes: {len(seven_zip_files)}",
-                    f"📦 Formato: 7z"
-                ])
-                bot.editMessageText(message, compresingInfo)
-                
-            except Exception as compression_error:
-                print(f"Error en compresión: {compression_error}")
-                # Limpiar archivos temporales en caso de error
-                for seven_zip_file in seven_zip_files:
-                    try:
-                        if os.path.exists(seven_zip_file):
-                            os.unlink(seven_zip_file)
-                    except: pass
-                raise compression_error
+                shutil.rmtree(temp_dir)
+            except: pass
             
             # Usar el nombre base original para la subida
-            client = processUploadFiles(original_filename, file_size, seven_zip_files, update, bot, message, thread=thread, jdb=jdb)
+            client = processUploadFiles(original_filename, file_size, mult_file.files, update, bot, message, thread=thread, jdb=jdb)
             
             try:
                 os.unlink(file)
             except:pass
-            file_upload_count = len(seven_zip_files)
+            file_upload_count = len(mult_file.files)
             
-            # LIMPIAR ARCHIVOS TEMPORALES 7z después de subir
+            # LIMPIAR ARCHIVOS TEMPORALES ZIP
             try:
-                for seven_zip_file in seven_zip_files:
-                    if os.path.exists(seven_zip_file):
-                        os.unlink(seven_zip_file)
+                for zip_file in mult_file.files:
+                    if os.path.exists(zip_file):
+                        os.unlink(zip_file)
             except:pass
                         
         else:
@@ -410,43 +363,18 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         if thread and thread.getStore('stop'):
             return
             
-        # ACTUALIZAR ESTADÍSTICAS DE USUARIO - CORREGIDO
+        # ACTUALIZAR ESTADÍSTICAS DE USUARIO
         try:
-            # get_file_size() devuelve BYTES, convertir correctamente a MB
-            file_size_bytes = file_size  # file_size ya está en bytes desde get_file_size()
-            file_size_mb = file_size_bytes / (1024 * 1024)  # Convertir bytes a MB
-            
-            # OBTENER VALORES ACTUALES CORRECTAMENTE
-            current_total_mb = getUser.get('total_mb_used', 0)
-            current_count = getUser.get('upload_count', 0)
-            
-            # CALCULAR NUEVOS VALORES (SUMA ACUMULATIVA)
-            new_total_mb = current_total_mb + file_size_mb
-            new_count = current_count + 1
-            
-            # ACTUALIZAR ESTADÍSTICAS
-            getUser['total_mb_used'] = new_total_mb
-            getUser['upload_count'] = new_count
+            file_size_mb = file_size / (1024 * 1024)
+            current_total = getUser.get('total_mb_used', 0)
+            new_total = current_total + file_size_mb
+            getUser['total_mb_used'] = new_total
             getUser['last_upload'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            getUser['last_activity'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Si es la primera vez que sube, guardar fecha de primera subida
-            if not getUser.get('first_upload'):
-                getUser['first_upload'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
+            getUser['upload_count'] = getUser.get('upload_count', 0) + 1
             jdb.save_data_user(username, getUser)
             jdb.save()
-            
-            # DEBUG: Verificar que se está sumando correctamente
-            print(f"📊 Estadísticas actualizadas - Usuario: {username}")
-            print(f"📁 Archivo: {file_size_bytes} bytes = {file_size_mb:.2f} MB")
-            print(f"💾 Total ANTES: {current_total_mb:.2f} MB")
-            print(f"💾 Total DESPUÉS: {new_total_mb:.2f} MB")
-            print(f"🔢 Subidas ANTES: {current_count}")
-            print(f"🔢 Subidas DESPUÉS: {new_count}")
-            
         except Exception as e:
-            print(f"❌ Error actualizando estadísticas: {e}")
+            print(f"Error actualizando estadísticas: {e}")
             
         bot.editMessageText(message,'<b>📄 Preparando enlaces...</b>', parse_mode='HTML')
         evidname = ''
@@ -504,8 +432,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                     f"📦 Tamaño total: {sizeof_fmt(file_size)}",
                     f"🔗 Enlaces generados: {len(files)}",
                     f"⏱️ Duración enlaces: 8-30 minutos",
-                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único",
-                    f"📦 Formato: 7z" if total_parts > 1 else ""
+                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
                 ])
             else:
                 finishInfo = format_s1_message(finish_title, [
@@ -513,8 +440,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                     f"📦 Tamaño total: {sizeof_fmt(file_size)}",
                     f"🔗 Enlaces generados: {len(files)}",
                     f"⏱️ Duración enlaces: 3 días",
-                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único",
-                    f"📦 Formato: 7z" if total_parts > 1 else ""
+                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
                 ])
             
             bot.sendMessage(message.chat.id, finishInfo)
@@ -533,7 +459,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                         # Si es un solo archivo: Solo el nombre
                         file_display = f"{original_filename}"
                     
-                    # Crear enlace HTML (SIN el emoji 📎)
+                    # Crear enlace HTML
                     link = f"┣⪼ <a href='{f['directurl']}'>{file_display}</a>\n"
                     links_message += link
                 
@@ -541,6 +467,10 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 
                 # Enviar con parse_mode HTML para que los enlaces sean clickeables
                 bot.sendMessage(message.chat.id, links_message, parse_mode='HTML')
+                
+                # ELIMINAR el envío del mensaje filesInfo para no duplicar enlaces
+                # filesInfo = infos.createFileMsg(original_filename,files)
+                # bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
                 
                 txtname = base_name + '.txt'
                 sendTxt(txtname,files,update,bot)
@@ -873,8 +803,7 @@ def onmessage(update,bot:ObigramClient):
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
-            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened',
-            '/botstats', '/stats_info'  # Ahora stats_info está restringido para admin
+            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened'
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -882,8 +811,7 @@ def onmessage(update,bot:ObigramClient):
                            "<b>✅ Comandos disponibles para ti:</b>\n"
                            "• /start - Información del bot\n"
                            "• /tutorial - Guía de uso completo\n"
-                           "• Enlaces HTTP/HTTPS para subir archivos\n"
-                           "• /stats - Ver mis estadísticas",
+                           "• Enlaces HTTP/HTTPS para subir archivos",
                            parse_mode='HTML')
             return
 
@@ -892,10 +820,7 @@ def onmessage(update,bot:ObigramClient):
             bot.sendMessage(update.message.chat.id,
                            "<b>🤖 Bot de Subida de Archivos</b>\n\n"
                            "📤 <b>Para subir archivos:</b> Envía un enlace HTTP/HTTPS\n\n"
-                           "📝 <b>Comandos disponibles:</b>\n"
-                           "• /start - Información del bot\n"
-                           "• /tutorial - Guía de uso completo\n"
-                           "• /stats - Ver mis estadísticas",
+                           "📝 <b>Para ver comandos disponibles:</b> Usa /start",
                            parse_mode='HTML')
             return
 
@@ -1191,168 +1116,6 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ Error al cancelar</b>', parse_mode='HTML')
             return
 
-        # COMANDO STATS - PARA QUE USUARIOS VEAN SUS PROPIAS ESTADÍSTICAS
-        if '/stats' in msgText and not '/stats_info' in msgText:
-            try:
-                # Usar siempre el usuario actual (no permite ver otros usuarios)
-                target_user = username
-                    
-                user_data = jdb.get_user(target_user)
-                if user_data:
-                    # Calcular tiempo desde primera subida
-                    first_upload = user_data.get('first_upload', 'Nunca')
-                    last_upload = user_data.get('last_upload', 'Nunca')
-                    total_mb = user_data.get('total_mb_used', 0)
-                    total_gb = total_mb / 1024
-                    
-                    # Mostrar MB o GB según el tamaño
-                    if total_mb < 1024:
-                        space_display = f"{total_mb:.2f} MB"
-                    else:
-                        space_display = f"{total_gb:.2f} GB"
-                    
-                    stats_info = format_s1_message("📊 Mis Estadísticas", [
-                        f"📁 Total subidas: {user_data.get('upload_count', 0)}",
-                        f"💾 Espacio usado: {space_display}",
-                        f"📅 Primera subida: {first_upload}",
-                        f"🕐 Última subida: {last_upload}",
-                        f"🏫 Plataforma: {get_platform_name(user_data.get('moodle_host', ''))}"
-                    ])
-                    bot.sendMessage(update.message.chat.id, stats_info)
-                else:
-                    bot.sendMessage(update.message.chat.id, '<b>❌ No se encontraron estadísticas</b>', parse_mode='HTML')
-            except Exception as e:
-                print(f"Error en stats: {e}")
-                bot.sendMessage(update.message.chat.id, '<b>❌ Error al obtener estadísticas</b>', parse_mode='HTML')
-            return
-
-        # COMANDO STATS_INFO - PARA ADMINISTRADORES VER ESTADÍSTICAS DE USUARIOS ESPECÍFICOS
-        if '/stats_info' in msgText:
-            isadmin = jdb.is_admin(username)
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id, '<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-                
-            try:
-                parts = str(msgText).split(' ')
-                if len(parts) > 1:
-                    target_user = parts[1].replace('@', '')
-                else:
-                    bot.sendMessage(update.message.chat.id, 
-                                   '<b>❌ Formato incorrecto</b>\n\n'
-                                   '<b>Uso:</b> <code>/stats_info @usuario</code>\n\n'
-                                   '<b>Ejemplo:</b>\n<code>/stats_info juan</code>', 
-                                   parse_mode='HTML')
-                    return
-                    
-                user_data = jdb.get_user(target_user)
-                if user_data:
-                    # Calcular tiempo desde primera subida
-                    first_upload = user_data.get('first_upload', 'Nunca')
-                    last_upload = user_data.get('last_upload', 'Nunca')
-                    total_mb = user_data.get('total_mb_used', 0)
-                    total_gb = total_mb / 1024
-                    
-                    # Mostrar MB o GB según el tamaño
-                    if total_mb < 1024:
-                        space_display = f"{total_mb:.2f} MB"
-                    else:
-                        space_display = f"{total_gb:.2f} GB"
-                    
-                    stats_info = format_s1_message(f"📊 Estadísticas de @{target_user}", [
-                        f"👤 Usuario: @{target_user}",
-                        f"📁 Total subidas: {user_data.get('upload_count', 0)}",
-                        f"💾 Espacio usado: {space_display}",
-                        f"📅 Primera subida: {first_upload}",
-                        f"🕐 Última subida: {last_upload}",
-                        f"🏫 Plataforma: {get_platform_name(user_data.get('moodle_host', ''))}",
-                        f"🔧 Tipo de subida: {user_data.get('uploadtype', 'No configurado')}",
-                        f"☁️ Tipo de nube: {user_data.get('cloudtype', 'No configurado')}"
-                    ])
-                    bot.sendMessage(update.message.chat.id, stats_info)
-                else:
-                    bot.sendMessage(update.message.chat.id, f'<b>❌ Usuario @{target_user} no encontrado</b>', parse_mode='HTML')
-            except Exception as e:
-                print(f"Error en stats_info: {e}")
-                bot.sendMessage(update.message.chat.id, 
-                               '<b>❌ Error en el comando</b>\n\n'
-                               '<b>Uso:</b> <code>/stats_info @usuario</code>', 
-                               parse_mode='HTML')
-            return
-
-        # COMANDO PARA VER ESTADÍSTICAS GENERALES DEL BOT - SOLO ADMIN
-        if '/botstats' in msgText:
-            isadmin = jdb.is_admin(username)
-            if isadmin:
-                try:
-                    total_users = len(jdb.items)
-                    total_uploads = 0
-                    total_space_mb = 0
-                    active_users = 0
-                    
-                    # PARA LAS NUEVAS ESTADÍSTICAS
-                    top_uploader = {'user': 'Nadie', 'count': 0}
-                    top_space_user = {'user': 'Nadie', 'space_mb': 0}
-                    current_month = datetime.datetime.now().strftime("%Y-%m")
-                    new_this_month = 0
-                    
-                    for user, data in jdb.items.items():
-                        upload_count = data.get('upload_count', 0)
-                        user_space_mb = data.get('total_mb_used', 0)
-                        
-                        total_uploads += upload_count
-                        total_space_mb += user_space_mb
-                        
-                        # Usuario activo si ha subido algo
-                        if upload_count > 0:
-                            active_users += 1
-                        
-                        # Usuario con más subidas
-                        if upload_count > top_uploader['count']:
-                            top_uploader = {'user': user, 'count': upload_count}
-                        
-                        # Usuario que más espacio usa
-                        if user_space_mb > top_space_user['space_mb']:
-                            top_space_user = {'user': user, 'space_mb': user_space_mb}
-                        
-                        # Usuarios nuevos este mes
-                        first_upload = data.get('first_upload', '')
-                        if first_upload and current_month in first_upload:
-                            new_this_month += 1
-                    
-                    total_gb = total_space_mb / 1024
-                    top_space_gb = top_space_user['space_mb'] / 1024
-                    
-                    # Formatear espacio total
-                    if total_space_mb < 1024:
-                        total_space_display = f"{total_space_mb:.2f} MB"
-                    else:
-                        total_space_display = f"{total_gb:.2f} GB"
-                    
-                    # Formatear espacio del top user
-                    if top_space_user['space_mb'] < 1024:
-                        top_space_display = f"{top_space_user['space_mb']:.2f} MB"
-                    else:
-                        top_space_display = f"{top_space_gb:.2f} GB"
-                    
-                    bot_stats = format_s1_message("🤖 Estadísticas del Bot", [
-                        f"👥 Total usuarios: {total_users}",
-                        f"🆕 Nuevos este mes: {new_this_month}",
-                        f"✅ Usuarios activos: {active_users}",
-                        f"📁 Total subidas: {total_uploads}",
-                        f"💾 Espacio total: {total_space_display}",
-                        f"📊 Promedio por usuario: {total_space_mb/total_users if total_users > 0 else 0:.2f} MB",
-                        f"🏆 Top subidor: @{top_uploader['user']} ({top_uploader['count']} subidas)",
-                        f"💽 Mayor espacio: @{top_space_user['user']} ({top_space_display})"
-                    ])
-                    bot.sendMessage(update.message.chat.id, bot_stats)
-                except Exception as e:
-                    print(f"Error en botstats: {e}")
-                    bot.sendMessage(update.message.chat.id, '<b>❌ Error al obtener estadísticas del bot</b>', parse_mode='HTML')
-            else:
-                bot.sendMessage(update.message.chat.id, '<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
-            return
-
         message = bot.sendMessage(update.message.chat.id,'<b>⏳ Procesando...</b>', parse_mode='HTML')
 
         thread.store('msg',message)
@@ -1385,11 +1148,6 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /banuser - Eliminar usuario(s)
 ┣⪼ /getdb - Base de datos
 
-┣⪼ 📊 ESTADÍSTICAS:
-┣⪼ /stats - Mis estadísticas
-┣⪼ /stats_info @user - Stats de usuario (Admin)
-┣⪼ /botstats - Stats del bot
-
 ┣⪼ ⚡ CONFIGURACIÓN AVANZADA:
 ┣⪼ /myuser - Mi configuración
 ┣⪼ /zips - Tamaño de partes
@@ -1411,7 +1169,6 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ 📝 COMANDOS DISPONIBLES:
 ┣⪼ /start - Información del bot
 ┣⪼ /tutorial - Guía completa
-┣⪼ /stats - Mis estadísticas
 ╰━━━━━━━━━━━━━━━➣"""
             
             bot.deleteMessage(message.chat.id, message.message_id)
