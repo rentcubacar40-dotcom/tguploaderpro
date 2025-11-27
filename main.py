@@ -293,6 +293,8 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             max_file_size = 1024 * 1024 * 99  # 99 MB para EVA
         elif getUser['moodle_host'] == 'https://cursos.uo.edu.cu/':
             max_file_size = 1024 * 1024 * 99  # 99 MB para CURSOS
+        elif getUser['moodle_host'] == 'https://moodle.instec.cu/':  # NUEVA PLATAFORMA INSTEC
+            max_file_size = 1024 * 1024 * 99  # 99 MB para INSTEC
         else:
             max_file_size = 1024 * 1024 * getUser['zips']  # 100 MB para CENED por defecto
             
@@ -425,7 +427,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             # MENSAJE FINAL SEGÚN PLATAFORMA
             platform_name = get_platform_name(getUser['moodle_host'])
             finish_title = "✅ Subida Completada"
-            
+
             if platform_name == 'CENED':
                 finishInfo = format_s1_message(finish_title, [
                     f"📄 Archivo: {original_filename}",
@@ -433,6 +435,21 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                     f"🔗 Enlaces generados: {len(files)}",
                     f"⏱️ Duración enlaces: 8-30 minutos",
                     f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
+                ])
+            elif platform_name == 'INSTEC':  # NUEVA PLATAFORMA CON CREDENCIALES
+                # Obtener las credenciales del usuario actual
+                user_instec = getUser['moodle_user']
+                pass_instec = getUser['moodle_password']
+                
+                finishInfo = format_s1_message(finish_title, [
+                    f"📄 Archivo: {original_filename}",
+                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                    f"🔗 Enlaces generados: {len(files)}",
+                    f"⏱️ Duración enlaces: Desconocido",
+                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único",
+                    f"🔐 Descarga vía cuenta",
+                    f"👤 Usuario: {user_instec}",
+                    f"🔑 Contraseña: {pass_instec}"
                 ])
             else:
                 finishInfo = format_s1_message(finish_title, [
@@ -561,6 +578,8 @@ def get_platform_name(host):
         return 'CURSOS UO'
     elif 'aulacened.uci.cu' in host:
         return 'CENED'
+    elif 'moodle.instec.cu' in host:  # NUEVA PLATAFORMA
+        return 'INSTEC'
     else:
         return 'Personalizada'
 
@@ -649,13 +668,27 @@ def onmessage(update,bot:ObigramClient):
             jdb.save()
             bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CENED</b>', parse_mode='HTML')
             return
+
+        # NUEVO COMANDO - CONFIGURACIÓN INSTEC
+        if '/moodle_instec' in msgText and isadmin:
+            user_info['moodle_host'] = 'https://moodle.instec.cu/'
+            user_info['moodle_user'] = 'Kevin.cruz'
+            user_info['moodle_password'] = 'Kevin10.'
+            user_info['moodle_repo_id'] = 3
+            user_info['uploadtype'] = 'draft'
+            user_info['cloudtype'] = 'moodle'
+            user_info['zips'] = 99  # 99 MB para INSTEC
+            jdb.save_data_user(username, user_info)
+            jdb.save()
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para INSTEC</b>', parse_mode='HTML')
+            return
         
         # COMANDO ADDUSERCONFIG MEJORADO - Agrega y configura usuarios
         if '/adduserconfig' in msgText:
             isadmin = jdb.is_admin(username)
             if isadmin:
                 try:
-                    # Formato: /adduserconfig usuario1,usuario2 [eva|cursos|cened]
+                    # Formato: /adduserconfig usuario1,usuario2 [eva|cursos|cened|instec]
                     parts = str(msgText).split(' ', 2)
                     if len(parts) < 3:
                         bot.sendMessage(update.message.chat.id,
@@ -663,7 +696,8 @@ def onmessage(update,bot:ObigramClient):
                                        '<b>Formatos válidos:</b>\n'
                                        '<code>/adduserconfig usuario eva</code>\n'
                                        '<code>/adduserconfig usuario1,usuario2 cursos</code>\n'
-                                       '<code>/adduserconfig usuario cened</code>',
+                                       '<code>/adduserconfig usuario cened</code>\n'
+                                       '<code>/adduserconfig usuario instec</code>',
                                        parse_mode='HTML')
                         return
                     
@@ -698,6 +732,15 @@ def onmessage(update,bot:ObigramClient):
                             'uptype': 'draft',
                             'name': 'CENED',
                             'zips': 100  # 100 MB para CENED
+                        },
+                        'instec': {  # NUEVA CONFIGURACIÓN
+                            'host': 'https://moodle.instec.cu/',
+                            'user': 'Kevin.cruz',
+                            'password': 'Kevin10.',
+                            'repo_id': 3,
+                            'uptype': 'draft',
+                            'name': 'INSTEC',
+                            'zips': 99  # 99 MB para INSTEC
                         }
                     }
                     
@@ -705,7 +748,7 @@ def onmessage(update,bot:ObigramClient):
                     if platform not in configs:
                         bot.sendMessage(update.message.chat.id,
                                        '<b>❌ Plataforma no válida</b>\n'
-                                       '<b>Opciones:</b> eva, cursos, cened',
+                                       '<b>Opciones:</b> eva, cursos, cened, instec',
                                        parse_mode='HTML')
                         return
                     
@@ -803,7 +846,7 @@ def onmessage(update,bot:ObigramClient):
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
-            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened'
+            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened', '/moodle_instec'
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -1128,6 +1171,8 @@ def onmessage(update,bot:ObigramClient):
             duration_info = ""
             if platform_name == 'CENED':
                 duration_info = "┣⪼ ⏱️ Enlaces: 8-30 minutos\n"
+            elif platform_name == 'INSTEC':  # NUEVA PLATAFORMA
+                duration_info = "┣⪼ ⏱️ Enlaces: Desconocido\n┣⪼ 🔐 Descarga vía cuenta\n"
             else:
                 duration_info = "┣⪼ ⏱️ Enlaces: 3 días\n"
             
@@ -1142,6 +1187,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /moodle_eva - EVA
 ┣⪼ /moodle_cursos - CURSOS  
 ┣⪼ /moodle_cened - CENED
+┣⪼ /moodle_instec - INSTEC  # NUEVO COMANDO
 
 ┣⪼ 👥 GESTIÓN DE USUARIOS:
 ┣⪼ /adduserconfig - Agregar y configurar
