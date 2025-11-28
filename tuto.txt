@@ -11,10 +11,12 @@
 ┣⪼ • EVA UO - 99 MB por parte
 ┣⪼ • CURSOS UO - 99 MB por parte  
 ┣⪼ • CENED - 100 MB por parte
+┣⪼ • INSTEC - 99 MB por parte
 
 ┣⪼ ⏱️ DURACIÓN ENLACES:
 ┣⪼ • CENED: 8-30 minutos
 ┣⪼ • EVA/CURSOS: 3 días
+┣⪼ • INSTEC: Desconocido
 
 ┣⪼ 💾 LÍMITES:
 ┣⪼ • Archivos grandes se dividen automáticamente
@@ -25,7 +27,6 @@
 ┣⪼ • Solo enlaces directos HTTP/HTTPS
 ┣⪼ • Proceso completamente automático
 ┣⪼ • Enlaces son temporales
-┣⪼ • Estadísticas se reinician en cada actualización
-┣⪼ • Acceso requiere reactivación después de reinicios
-┣⪼ • Contacta al administrador si pierdes acceso
+┣⪼ • Los usuarios pierden acceso después de reinicios
+┣⪼ • Contacta al administrador para configurar acceso
 ╰━━━━━━━━━━━━━━━➣
