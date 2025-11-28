@@ -15,35 +15,33 @@ from ProxyCloud import ProxyCloud
 import socket
 import socks
 import asyncio
-
 import threading
-
 import S5Crypto
 
-
 class CallingUpload:
-                def __init__(self, func,filename,args):
-                    self.func = func
-                    self.args = args
-                    self.filename = filename
-                    self.time_start = time.time()
-                    self.time_total = 0
-                    self.speed = 0
-                    self.last_read_byte = 0
-                def __call__(self,monitor):
-                    try:
-                        self.speed += monitor.bytes_read - self.last_read_byte
-                        self.last_read_byte = monitor.bytes_read
-                        tcurrent = time.time() - self.time_start
-                        self.time_total += tcurrent
-                        self.time_start = time.time()
-                        if self.time_total>=1:
-                                clock_time = (monitor.len - monitor.bytes_read) / (self.speed)
-                                if self.func:
-                                    self.func(self.filename,monitor.bytes_read,monitor.len,self.speed,clock_time,self.args)
-                                self.time_total = 0
-                                self.speed = 0
-                    except:pass
+    def __init__(self, func,filename,args):
+        self.func = func
+        self.args = args
+        self.filename = filename
+        self.time_start = time.time()
+        self.time_total = 0
+        self.speed = 0
+        self.last_read_byte = 0
+        
+    def __call__(self,monitor):
+        try:
+            self.speed += monitor.bytes_read - self.last_read_byte
+            self.last_read_byte = monitor.bytes_read
+            tcurrent = time.time() - self.time_start
+            self.time_total += tcurrent
+            self.time_start = time.time()
+            if self.time_total>=1:
+                clock_time = (monitor.len - monitor.bytes_read) / (self.speed)
+                if self.func:
+                    self.func(self.filename,monitor.bytes_read,monitor.len,self.speed,clock_time,self.args)
+                self.time_total = 0
+                self.speed = 0
+        except:pass
 
 class MoodleClient(object):
     def __init__(self, user,passw,host='',repo_id=4,proxy:ProxyCloud=None):
@@ -61,7 +59,31 @@ class MoodleClient(object):
         self.proxy = None
         if proxy :
            self.proxy = proxy.as_dict_proxy()
-        self.baseheaders = headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'}
+        self.baseheaders = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'}
+
+    def safe_find(self, soup, tag, attrs=None):
+        """Encuentra elementos de forma segura evitando None"""
+        try:
+            if attrs:
+                element = soup.find(tag, attrs=attrs)
+            else:
+                element = soup.find(tag)
+            return element if element else None
+        except:
+            return None
+
+    def safe_extract_query(self, soup):
+        """Extrae query de forma segura"""
+        try:
+            object_tag = self.safe_find(soup, 'object', {'type':'text/html'})
+            if not object_tag:
+                object_tag = self.safe_find(soup, 'object')
+            
+            if object_tag and 'data' in object_tag.attrs:
+                return self.extractQuery(object_tag['data'])
+            return {}
+        except:
+            return {}
 
     def getsession(self):
         return self.session
@@ -134,29 +156,60 @@ class MoodleClient(object):
         return False
 
     def createEvidence(self,name,desc=''):
-        evidenceurl = self.path + 'admin/tool/lp/user_evidence_edit.php?userid=' + self.userid
-        resp = self.session.get(evidenceurl,proxies=self.proxy,headers=self.baseheaders)
-        soup = BeautifulSoup(resp.text,'html.parser')
+        try:
+            evidenceurl = self.path + 'admin/tool/lp/user_evidence_edit.php?userid=' + self.userid
+            resp = self.session.get(evidenceurl,proxies=self.proxy,headers=self.baseheaders)
+            soup = BeautifulSoup(resp.text,'html.parser')
 
-        sesskey  =  self.sesskey
-        files = self.extractQuery(soup.find('object')['data'])['itemid']
+            sesskey = self.sesskey
+            if not sesskey:
+                sesskey_input = self.safe_find(soup, 'input', {'name':'sesskey'})
+                if sesskey_input:
+                    sesskey = sesskey_input.get('value', '')
 
+            query = self.safe_extract_query(soup)
+            files = query.get('itemid', '') if query else ''
 
+            if not sesskey:
+                print("❌ No se pudo obtener sesskey")
+                return None
 
-        saveevidence = self.path + 'admin/tool/lp/user_evidence_edit.php?id=&userid='+self.userid+'&return='
-        payload = {'userid':self.userid,
-                   'sesskey':sesskey,
-                   '_qf__tool_lp_form_user_evidence':1,
-                   'name':name,'description[text]':desc,
-                   'description[format]':1,
-                   'url':'',
-                   'files':files,
-                   'submitbutton':'Guardar+cambios'}
-        resp = self.session.post(saveevidence,data=payload,proxies=self.proxy,headers=self.baseheaders)
-
-        evidenceid = str(resp.url).split('?')[1].split('=')[1]
-
-        return {'name':name,'desc':desc,'id':evidenceid,'url':resp.url,'files':[]}
+            saveevidence = self.path + 'admin/tool/lp/user_evidence_edit.php?id=&userid='+self.userid+'&return='
+            payload = {
+                'userid': self.userid,
+                'sesskey': sesskey,
+                '_qf__tool_lp_form_user_evidence': 1,
+                'name': name,
+                'description[text]': desc,
+                'description[format]': 1,
+                'url': '',
+                'files': files,
+                'submitbutton': 'Guardar cambios'
+            }
+            
+            resp = self.session.post(saveevidence, data=payload, proxies=self.proxy, headers=self.baseheaders)
+            
+            if resp.status_code == 200:
+                try:
+                    evidenceid = str(resp.url).split('?')[1].split('=')[1]
+                    print(f"✅ Evidencia creada exitosamente: {name} (ID: {evidenceid})")
+                    return {'name': name, 'desc': desc, 'id': evidenceid, 'url': resp.url, 'files': []}
+                except:
+                    soup_post = BeautifulSoup(resp.text, 'html.parser')
+                    success_msg = soup_post.find('div', {'class': 'alert-success'})
+                    if success_msg:
+                        print(f"✅ Evidencia creada: {name} (pero no se pudo obtener ID)")
+                        return {'name': name, 'desc': desc, 'id': 'unknown', 'url': resp.url, 'files': []}
+                    else:
+                        print("❌ No se pudo crear la evidencia")
+                        return None
+            else:
+                print(f"❌ Error HTTP {resp.status_code} al crear evidencia")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error en createEvidence: {str(e)}")
+            return None
 
     def createBlog(self,name,itemid,desc="<p+dir=\"ltr\"+style=\"text-align:+left;\">asd<br></p>"):
         post_attach = f'{self.path}blog/edit.php?action=add&userid='+self.userid
@@ -191,47 +244,91 @@ class MoodleClient(object):
         data = json.loads(resp.text)
         return data
 
-
     def saveEvidence(self,evidence):
-        evidenceurl = self.path + 'admin/tool/lp/user_evidence_edit.php?id='+evidence['id']+'&userid='+self.userid+'&return=list'
-        resp = self.session.get(evidenceurl,proxies=self.proxy,headers=self.baseheaders)
-        soup = BeautifulSoup(resp.text,'html.parser')
-        sesskey  =  soup.find('input',attrs={'name':'sesskey'})['value']
-        files = evidence['files']
-        saveevidence = self.path + 'admin/tool/lp/user_evidence_edit.php?id='+evidence['id']+'&userid='+self.userid+'&return=list'
-        payload = {'userid':self.userid,
-                   'sesskey':sesskey,
-                   '_qf__tool_lp_form_user_evidence':1,
-                   'name':evidence['name'],'description[text]':evidence['desc'],
-                   'description[format]':1,'url':'',
-                   'files':files,
-                   'submitbutton':'Guardar+cambios'}
-        resp = self.session.post(saveevidence,data=payload,proxies=self.proxy,headers=self.baseheaders)
-        return evidence
+        try:
+            if not evidence or 'id' not in evidence:
+                print("❌ Evidencia inválida para guardar")
+                return None
+
+            evidenceurl = self.path + 'admin/tool/lp/user_evidence_edit.php?id='+evidence['id']+'&userid='+self.userid+'&return=list'
+            resp = self.session.get(evidenceurl,proxies=self.proxy,headers=self.baseheaders)
+            soup = BeautifulSoup(resp.text,'html.parser')
+            
+            sesskey_input = self.safe_find(soup, 'input', {'name':'sesskey'})
+            if not sesskey_input:
+                print("❌ No se pudo encontrar sesskey en saveEvidence")
+                return None
+                
+            sesskey = sesskey_input.get('value', '')
+            if not sesskey:
+                print("❌ Sesskey vacío en saveEvidence")
+                return None
+
+            files = evidence.get('files', '')
+            saveevidence = self.path + 'admin/tool/lp/user_evidence_edit.php?id='+evidence['id']+'&userid='+self.userid+'&return=list'
+            payload = {
+                'userid': self.userid,
+                'sesskey': sesskey,
+                '_qf__tool_lp_form_user_evidence': 1,
+                'name': evidence['name'],
+                'description[text]': evidence.get('desc', ''),
+                'description[format]': 1,
+                'url': '',
+                'files': files,
+                'submitbutton': 'Guardar cambios'
+            }
+            
+            resp = self.session.post(saveevidence, data=payload, proxies=self.proxy, headers=self.baseheaders)
+            
+            if resp.status_code == 200:
+                soup_post = BeautifulSoup(resp.text, 'html.parser')
+                success_msg = soup_post.find('div', {'class': 'alert-success'})
+                if success_msg:
+                    print(f"✅ Evidencia guardada exitosamente: {evidence['name']}")
+                    return evidence
+                else:
+                    print("⚠️ Evidencia guardada pero sin confirmación visual")
+                    return evidence
+            else:
+                print(f"❌ Error HTTP {resp.status_code} al guardar evidencia")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error en saveEvidence: {str(e)}")
+            return None
 
     def getEvidences(self):
-        evidencesurl = self.path + 'admin/tool/lp/user_evidence_list.php?userid=' + self.userid 
-        resp = self.session.get(evidencesurl,proxies=self.proxy,headers=self.baseheaders)
-        soup = BeautifulSoup(resp.text,'html.parser')
-        nodes = soup.find_all('tr',{'data-region':'user-evidence-node'})
-        list = []
-        for n in nodes:
-            nodetd = n.find_all('td')
-            evurl = nodetd[0].find('a')['href']
-            evname = n.find('a').next
-            evid = evurl.split('?')[1].split('=')[1]
-            nodefiles = nodetd[1].find_all('a')
-            nfilelist = []
-            for f in nodefiles:
-                url = str(f['href'])
-                directurl = url
-                try:
-                    directurl = url + '&token=' + self.userdata['token']
-                    directurl = str(directurl).replace('pluginfile.php','webservice/pluginfile.php')
-                except:pass
-                nfilelist.append({'name':f.next,'url':url,'directurl':directurl})
-            list.append({'name':evname,'desc':'','id':evid,'url':evurl,'files':nfilelist})
-        return list
+        try:
+            evidencesurl = self.path + 'admin/tool/lp/user_evidence_list.php?userid=' + self.userid 
+            resp = self.session.get(evidencesurl,proxies=self.proxy,headers=self.baseheaders)
+            soup = BeautifulSoup(resp.text,'html.parser')
+            nodes = soup.find_all('tr',{'data-region':'user-evidence-node'})
+            list = []
+            for n in nodes:
+                nodetd = n.find_all('td')
+                if len(nodetd) < 2:
+                    continue
+                    
+                evurl = nodetd[0].find('a')['href'] if nodetd[0].find('a') else ''
+                evname = n.find('a').next if n.find('a') else 'Sin nombre'
+                evid = evurl.split('?')[1].split('=')[1] if '?' in evurl else 'unknown'
+                
+                nodefiles = nodetd[1].find_all('a')
+                nfilelist = []
+                for f in nodefiles:
+                    url = str(f.get('href', ''))
+                    directurl = url
+                    try:
+                        if self.userdata and 'token' in self.userdata:
+                            directurl = url + '&token=' + self.userdata['token']
+                            directurl = str(directurl).replace('pluginfile.php','webservice/pluginfile.php')
+                    except:pass
+                    nfilelist.append({'name':f.next,'url':url,'directurl':directurl})
+                list.append({'name':evname,'desc':'','id':evid,'url':evurl,'files':nfilelist})
+            return list
+        except Exception as e:
+            print(f"❌ Error en getEvidences: {str(e)}")
+            return []
 
     def deleteEvidence(self,evidence):
         evidencesurl = self.path + 'admin/tool/lp/user_evidence_edit.php?userid=' + self.userid
@@ -245,75 +342,112 @@ class MoodleClient(object):
         resp = self.session.post(deleteUrl, json=savejson,headers=headers,proxies=self.proxy)
         pass
 
-
-
     def upload_file(self,file,evidence=None,itemid=None,progressfunc=None,args=(),tokenize=False):
         try:
             fileurl = self.path + 'admin/tool/lp/user_evidence_edit.php?userid=' + self.userid
             resp = self.session.get(fileurl,proxies=self.proxy,headers=self.baseheaders)
             soup = BeautifulSoup(resp.text,'html.parser')
+            
             sesskey = self.sesskey
-            if self.sesskey=='':
-                sesskey  =  soup.find('input',attrs={'name':'sesskey'})['value']
-            _qf__user_files_form = 1
-            query = self.extractQuery(soup.find('object',attrs={'type':'text/html'})['data'])
+            if not sesskey:
+                sesskey_input = self.safe_find(soup, 'input', {'name':'sesskey'})
+                if sesskey_input:
+                    sesskey = sesskey_input.get('value', '')
+            
+            if not sesskey:
+                print("❌ No se pudo obtener sesskey para upload")
+                return None, None
+
+            query = self.safe_extract_query(soup)
+            if not query:
+                print("❌ No se pudo obtener query para upload")
+                return None, None
+
             client_id = self.getclientid(resp.text)
+            if not client_id:
+                print("❌ No se pudo obtener client_id")
+                return None, None
         
-            itempostid = query['itemid']
+            itempostid = query.get('itemid', '')
             if itemid:
                 itempostid = itemid
 
+            if not os.path.exists(file):
+                print(f"❌ Archivo no existe: {file}")
+                return None, None
+
             of = open(file,'rb')
             b = uuid.uuid4().hex
+            
             try:
-                areamaxbyttes = query['areamaxbytes']
+                areamaxbyttes = query.get('areamaxbytes', '-1')
                 if areamaxbyttes=='0':
                     areamaxbyttes = '-1'
             except:
                 areamaxbyttes = '-1'
+                
             upload_data = {
-                'title':(None,''),
-                'author':(None,'ObysoftDev'),
-                'license':(None,'allrightsreserved'),
-                'itemid':(None,itempostid),
-                'repo_id':(None,str(self.repo_id)),
-                'p':(None,''),
-                'page':(None,''),
-                'env':(None,query['env']),
-                'sesskey':(None,sesskey),
-                'client_id':(None,client_id),
-                'maxbytes':(None,query['maxbytes']),
-                'areamaxbytes':(None,areamaxbyttes),
-                'ctx_id':(None,query['ctx_id']),
-                'savepath':(None,'/')}
+                'title': (None,''),
+                'author': (None,'ObysoftDev'),
+                'license': (None,'allrightsreserved'),
+                'itemid': (None,itempostid),
+                'repo_id': (None,str(self.repo_id)),
+                'p': (None,''),
+                'page': (None,''),
+                'env': (None,query.get('env', '')),
+                'sesskey': (None,sesskey),
+                'client_id': (None,client_id),
+                'maxbytes': (None,query.get('maxbytes', '')),
+                'areamaxbytes': (None,areamaxbyttes),
+                'ctx_id': (None,query.get('ctx_id', '')),
+                'savepath': (None,'/')
+            }
+            
             upload_file = {
-                'repo_upload_file':(file,of,'application/octet-stream'),
+                'repo_upload_file': (file,of,'application/octet-stream'),
                 **upload_data
-                }
+            }
+            
             post_file_url = self.path+'repository/repository_ajax.php?action=upload'
             encoder = rt.MultipartEncoder(upload_file,boundary=b)
             progrescall = CallingUpload(progressfunc,file,args)
             callback = partial(progrescall)
             monitor = MultipartEncoderMonitor(encoder,callback=callback)
-            resp2 = self.session.post(post_file_url,data=monitor,headers={"Content-Type": "multipart/form-data; boundary="+b,**self.baseheaders},proxies=self.proxy)
+            
+            resp2 = self.session.post(post_file_url, data=monitor, 
+                                    headers={"Content-Type": "multipart/form-data; boundary="+b, **self.baseheaders}, 
+                                    proxies=self.proxy)
             of.close()
 
-            #save evidence
-            if evidence:
-                evidence['files'] = itempostid
+            if resp2.status_code != 200:
+                print(f"❌ Error HTTP {resp2.status_code} en upload")
+                return None, None
 
             data = self.parsejson(resp2.text)
+            if not data or 'url' not in data:
+                print("❌ Respuesta de upload inválida")
+                return None, None
+
+            if evidence:
+                evidence['files'] = itempostid
+                print(f"✅ Archivo subido y asociado a evidencia: {evidence['name']}")
+
             data['url'] = str(data['url']).replace('\\','')
             data['normalurl'] = data['url']
+            
             if self.userdata:
                 if 'token' in self.userdata and not tokenize:
                     name = str(data['url']).split('/')[-1]
-                    data['url'] = self.path+'webservice/pluginfile.php/'+query['ctx_id']+'/core_competency/userevidence/'+evidence['id']+'/'+name+'?token='+self.userdata['token']
+                    if evidence and 'id' in evidence:
+                        data['url'] = self.path+'webservice/pluginfile.php/'+query.get('ctx_id','')+'/core_competency/userevidence/'+evidence['id']+'/'+name+'?token='+self.userdata['token']
                 if tokenize:
                     data['url'] = self.host_tokenize + S5Crypto.encrypt(data['url']) + '/' + self.userdata['s5token']
-            return itempostid,data
-        except:
-            return None,None
+                    
+            return itempostid, data
+            
+        except Exception as e:
+            print(f"❌ Error en upload_file: {str(e)}")
+            return None, None
 
     def upload_file_blog(self,file,blog=None,itemid=None,progressfunc=None,args=(),tokenize=False):
         try:
@@ -380,7 +514,6 @@ class MoodleClient(object):
 
     def upload_file_perfil(self,file,progressfunc=None,args=(),tokenize=False):
             file_edit = f'{self.path}user/edit.php?id={self.userid}&returnto=profile'
-            #https://eduvirtual.uho.edu.cu/user/profile.php
             resp = self.session.get(file_edit,proxies=self.proxy,headers=self.baseheaders)
             soup = BeautifulSoup(resp.text, 'html.parser')
             sesskey = self.sesskey
@@ -448,7 +581,6 @@ class MoodleClient(object):
 
     def upload_file_draft(self,file,progressfunc=None,args=(),tokenize=False):
             file_edit = f'{self.path}user/files.php'
-            #https://eduvirtual.uho.edu.cu/user/profile.php
             resp = self.session.get(file_edit,proxies=self.proxy,headers=self.baseheaders)
             soup = BeautifulSoup(resp.text, 'html.parser')
             sesskey = self.sesskey
@@ -504,7 +636,6 @@ class MoodleClient(object):
 
     def upload_file_calendar(self,file,progressfunc=None,args=(),tokenize=False):
             file_edit = f'{self.path}/calendar/managesubscriptions.php'
-            #https://eduvirtual.uho.edu.cu/user/profile.php
             resp = self.session.get(file_edit,proxies=self.proxy,headers=self.baseheaders)
             soup = BeautifulSoup(resp.text, 'html.parser')
             sesskey = self.sesskey
@@ -573,27 +704,35 @@ class MoodleClient(object):
     
     def parsejson(self,json):
         data = {}
-        tokens = str(json).replace('{','').replace('}','').split(',')
-        for t in tokens:
-            split = str(t).split(':',1)
-            data[str(split[0]).replace('"','')] = str(split[1]).replace('"','')
+        try:
+            tokens = str(json).replace('{','').replace('}','').split(',')
+            for t in tokens:
+                split = str(t).split(':',1)
+                if len(split) == 2:
+                    data[str(split[0]).replace('"','')] = str(split[1]).replace('"','')
+        except:
+            pass
         return data
 
     def getclientid(self,html):
-        index = str(html).index('client_id')
-        max = 25
-        ret = html[index:(index+max)]
-        return str(ret).replace('client_id":"','')
+        try:
+            index = str(html).index('client_id')
+            max = 25
+            ret = html[index:(index+max)]
+            return str(ret).replace('client_id":"','')
+        except:
+            return ''
 
     def extractQuery(self,url):
-        tokens = str(url).split('?')[1].split('&')
         retQuery = {}
-        for q in tokens:
-            qspl = q.split('=')
-            try:
-                retQuery[qspl[0]] = qspl[1]
-            except:
-                 retQuery[qspl[0]] = None
+        try:
+            tokens = str(url).split('?')[1].split('&')
+            for q in tokens:
+                qspl = q.split('=')
+                if len(qspl) == 2:
+                    retQuery[qspl[0]] = qspl[1]
+        except:
+            pass
         return retQuery
 
     def getFiles(self):
@@ -625,7 +764,6 @@ class MoodleClient(object):
         postdelete = self.path+'repository/draftfiles_ajax.php?action=delete'
         resp = self.session.post(postdelete,data=payload,proxies=self.proxy,headers=self.baseheaders)
 
-        #save file
         saveUrl = self.path+'lib/ajax/service.php?sesskey='+sesskey+'&info=core_form_dynamic_form'
         savejson = [{"index":0,"methodname":"core_form_dynamic_form","args":{"formdata":"sesskey="+sesskey+"&_qf__core_user_form_private_files="+_qf__core_user_form_private_files+"&files_filemanager="+query['itemid']+"","form":"core_user\\form\\private_files"}}]
         headers = {'Content-type': 'application/json', 'Accept': 'application/json, text/javascript, */*; q=0.01',**self.baseheaders}
@@ -634,5 +772,9 @@ class MoodleClient(object):
         return resp3
 
     def logout(self):
-        logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
-        self.session.post(logouturl,proxies=self.proxy,headers=self.baseheaders)
+        try:
+            if self.sesskey:
+                logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
+                self.session.post(logouturl,proxies=self.proxy,headers=self.baseheaders)
+        except:
+            pass
