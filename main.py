@@ -1187,7 +1187,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /moodle_eva - EVA
 ┣⪼ /moodle_cursos - CURSOS  
 ┣⪼ /moodle_cened - CENED
-┣⪼ /moodle_instec - INSTEC  # NUEVO COMANDO
+┣⪼ /moodle_instec - INSTEC
 
 ┣⪼ 👥 GESTIÓN DE USUARIOS:
 ┣⪼ /adduserconfig - Agregar y configurar
