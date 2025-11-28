@@ -444,7 +444,7 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
                    for draft in client:
                        if draft and 'url' in draft:
-                           files.append({'name':draft.get('file', original_filename),'directurl':draft['url']}
+                           files.append({'name':draft.get('file', original_filename),'directurl':draft['url']})
             else:
                 for data in client:
                     if data and 'url' in data:
