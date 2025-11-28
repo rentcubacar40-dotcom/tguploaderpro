@@ -792,7 +792,7 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_host'] = 'https://moodle.instec.cu/'
             user_info['moodle_user'] = 'Kevin.cruz'
             user_info['moodle_password'] = 'Kevin10.'
-            user_info['moodle_repo_id'] = 3
+            user_info['moodle_repo_id'] = 4
             user_info['uploadtype'] = 'evidence'  # Cambiado a evidence
             user_info['cloudtype'] = 'moodle'
             user_info['zips'] = 99  # 99 MB para INSTEC
