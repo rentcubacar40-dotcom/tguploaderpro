@@ -169,26 +169,22 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
             loged = client.login()
             itererr = 0
             if not loged:
-                bot.editMessageText(message,'<b>❌ Error en la plataforma - Login falló</b>', parse_mode='HTML')
+                bot.editMessageText(message,'<b>❌ Error en la plataforma</b>', parse_mode='HTML')
                 return None
-            
-            # VERIFICACIÓN MEJORADA PARA EVIDENCIAS
+                
             if user_info['uploadtype'] == 'evidence':
-                evidence_name = str(filename).split('.')[0]
-                print(f"🔄 Creando evidencia: {evidence_name}")
-                
-                evidence = client.createEvidence(evidence_name)
-                
-                if not evidence:
-                    bot.editMessageText(message,'<b>❌ Error: No se pudo crear la evidencia</b>', parse_mode='HTML')
-                    return None
-                else:
-                    print(f"✅ Evidencia creada exitosamente: {evidence['name']} (ID: {evidence.get('id', 'unknown')})")
+                evidences = client.getEvidences()
+                evidname = str(filename).split('.')[0]
+                for evid in evidences:
+                    if evid['name'] == evidname:
+                        evidence = evid
+                        break
+                if evidence is None:
+                    evidence = client.createEvidence(evidname)
 
             originalfile = ''
             total_parts = len(files)
             draftlist = []
-            upload_success = False
             
             for i, f in enumerate(files, 1):
                 f_size = get_file_size(f)
@@ -203,85 +199,48 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                 if total_parts > 1:
                     part_info = (i, total_parts, filename)
                 
-                while resp is None and iter < 5:  # Límite de intentos
+                while resp is None:
                     if thread and thread.getStore('stop'):
                         break
-                        
-                    try:
-                        if user_info['uploadtype'] == 'evidence':
-                            print(f"🔄 Subiendo archivo {i}/{total_parts} a evidencia...")
-                            fileid, resp = client.upload_file(f, evidence, fileid,
-                                                            progressfunc=uploadFile,
-                                                            args=(bot,message,filename,thread,part_info),
-                                                            tokenize=tokenize)
-                            if resp:
-                                draftlist.append(resp)
-                                upload_success = True
-                                print(f"✅ Archivo {i}/{total_parts} subido exitosamente a evidencia")
-                            else:
-                                print(f"❌ Intento {iter+1} falló para archivo {i}")
-                                
-                        if user_info['uploadtype'] == 'draft':
-                            fileid,resp = client.upload_file_draft(f,
-                                                                  progressfunc=uploadFile,
-                                                                  args=(bot,message,filename,thread,part_info),
-                                                                  tokenize=tokenize)
-                            if resp:
-                                draftlist.append(resp)
-                                upload_success = True
-                        if user_info['uploadtype'] == 'blog':
-                            fileid,resp = client.upload_file_blog(f,
+                    if user_info['uploadtype'] == 'evidence':
+                        fileid,resp = client.upload_file(f,evidence,fileid,
+                                                        progressfunc=uploadFile,
+                                                        args=(bot,message,filename,thread,part_info),
+                                                        tokenize=tokenize)
+                        draftlist.append(resp)
+                    if user_info['uploadtype'] == 'draft':
+                        fileid,resp = client.upload_file_draft(f,
+                                                              progressfunc=uploadFile,
+                                                              args=(bot,message,filename,thread,part_info),
+                                                              tokenize=tokenize)
+                        draftlist.append(resp)
+                    if user_info['uploadtype'] == 'blog':
+                        fileid,resp = client.upload_file_blog(f,
+                                                             progressfunc=uploadFile,
+                                                             args=(bot,message,filename,thread,part_info),
+                                                             tokenize=tokenize)
+                        draftlist.append(resp)
+                    if user_info['uploadtype'] == 'calendario':
+                        fileid,resp = client.upload_file_calendar(f,
                                                                  progressfunc=uploadFile,
                                                                  args=(bot,message,filename,thread,part_info),
                                                                  tokenize=tokenize)
-                            if resp:
-                                draftlist.append(resp)
-                                upload_success = True
-                        if user_info['uploadtype'] == 'calendario':
-                            fileid,resp = client.upload_file_calendar(f,
-                                                                     progressfunc=uploadFile,
-                                                                     args=(bot,message,filename,thread,part_info),
-                                                                     tokenize=tokenize)
-                            if resp:
-                                draftlist.append(resp)
-                                upload_success = True
-                    except Exception as upload_error:
-                        print(f"❌ Error en upload: {str(upload_error)}")
-                        resp = None
-                    
+                        draftlist.append(resp)
                     iter += 1
-                    if iter >= 5:
-                        print(f"🚫 Máximo de intentos alcanzado para archivo {i}")
+                    if iter>=10:
                         break
-                
                 if thread and thread.getStore('stop'):
                     break
-                    
-                # Limpiar archivo temporal solo si se subió exitosamente
-                if resp:
-                    try:
-                        os.unlink(f)
-                        print(f"🧹 Archivo temporal {i} eliminado")
-                    except:
-                        pass
-                else:
-                    print(f"⚠️ Archivo {i} no se pudo subir, conservando temporal")
-            
-            # VERIFICACIÓN FINAL Y GUARDADO PARA EVIDENCIAS
+                os.unlink(f)
+                
             if thread and thread.getStore('stop'):
                 return None
                 
-            if user_info['uploadtype'] == 'evidence' and upload_success:
-                print(f"💾 Guardando evidencia: {evidence['name']}")
-                saved_evidence = client.saveEvidence(evidence)
-                if not saved_evidence:
-                    bot.editMessageText(message, '<b>❌ Error: No se pudo guardar la evidencia</b>', parse_mode='HTML')
-                    return None
-                else:
-                    print("🎉 Evidencia guardada exitosamente en la plataforma")
-            
-            return draftlist if upload_success else None
-            
+            if user_info['uploadtype'] == 'evidence':
+                try:
+                    client.saveEvidence(evidence)
+                except:pass
+            return draftlist
         elif cloudtype == 'cloud':
             tokenize = False
             if user_info['tokenize']!=0:
@@ -299,7 +258,6 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                 
             total_parts = len(files)
             filesdata = []
-            upload_success = False
             for i, f in enumerate(files, 1):
                 if thread and thread.getStore('stop'):
                     break
@@ -312,15 +270,13 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
                                         progressfunc=uploadFile,
                                         args=(bot,message,filename,thread,part_info),
                                         tokenize=tokenize)
-                if data:
-                    filesdata.append(data)
-                    upload_success = True
-                    os.unlink(f)
+                filesdata.append(data)
+                os.unlink(f)
                 
             if thread and thread.getStore('stop'):
                 return None
                 
-            return filesdata if upload_success else None
+            return filesdata
         return None
     except Exception as ex:
         bot.editMessageText(message,f'<b>❌ Error</b>\n<code>{str(ex)}</code>', parse_mode='HTML')
@@ -439,16 +395,13 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                             if len(ev['files'])>0:
                                findex+=1
                         client.logout()
-                    except Exception as e:
-                        print(f"Error obteniendo evidencias: {e}")
+                    except:pass
                 if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
                    for draft in client:
-                       if draft and 'url' in draft:
-                           files.append({'name':draft.get('file', original_filename),'directurl':draft['url']})
+                       files.append({'name':draft['file'],'directurl':draft['url']})
             else:
                 for data in client:
-                    if data and 'url' in data:
-                        files.append({'name':data.get('name', original_filename),'directurl':data['url']})
+                    files.append({'name':data['name'],'directurl':data['url']})
 
             # COMPATIBILIDAD CON NUBES UO - Incluir webservice para todas las plataformas
             for i in range(len(files)):
@@ -532,10 +485,12 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
                 # Enviar con parse_mode HTML para que los enlaces sean clickeables
                 bot.sendMessage(message.chat.id, links_message, parse_mode='HTML')
                 
+                # ELIMINAR el envío del mensaje filesInfo para no duplicar enlaces
+                # filesInfo = infos.createFileMsg(original_filename,files)
+                # bot.sendMessage(message.chat.id, filesInfo, parse_mode='html')
+                
                 txtname = base_name + '.txt'
                 sendTxt(txtname,files,update,bot)
-            else:
-                bot.sendMessage(message.chat.id, '<b>⚠️ No se generaron enlaces</b>', parse_mode='HTML')
     except Exception as ex:
         print(f"Error en processFile: {ex}")
 
@@ -628,51 +583,6 @@ def get_platform_name(host):
     else:
         return 'Personalizada'
 
-def generate_user_stats(jdb):
-    """Genera estadísticas de usuarios"""
-    try:
-        users = jdb.get_all_users()
-        stats = {
-            'total_users': 0,
-            'active_users': 0,
-            'total_uploads': 0,
-            'total_size_mb': 0,
-            'platform_stats': {},
-            'user_details': []
-        }
-        
-        for username, user_data in users.items():
-            if username == 'admin':
-                continue
-                
-            stats['total_users'] += 1
-            upload_count = user_data.get('upload_count', 0)
-            total_mb = user_data.get('total_mb_used', 0)
-            
-            if upload_count > 0:
-                stats['active_users'] += 1
-                stats['total_uploads'] += upload_count
-                stats['total_size_mb'] += total_mb
-                
-                platform = get_platform_name(user_data.get('moodle_host', ''))
-                last_upload = user_data.get('last_upload', 'Nunca')
-                
-                stats['user_details'].append({
-                    'username': username,
-                    'uploads': upload_count,
-                    'size_mb': total_mb,
-                    'last_upload': last_upload,
-                    'platform': platform
-                })
-        
-        # Ordenar por subidas
-        stats['user_details'].sort(key=lambda x: x['uploads'], reverse=True)
-        return stats
-        
-    except Exception as e:
-        print(f"Error generando stats: {e}")
-        return None
-
 def onmessage(update,bot:ObigramClient):
     try:
         thread = bot.this_thread
@@ -719,46 +629,18 @@ def onmessage(update,bot:ObigramClient):
         is_text = msgText != ''
         isadmin = jdb.is_admin(username)
         
-        # COMANDO STAT PARA ESTADÍSTICAS
-        if '/stat' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando solo para administradores</b>', parse_mode='HTML')
-                return
-                
-            stats = generate_user_stats(jdb)
-            if not stats:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Error generando estadísticas</b>', parse_mode='HTML')
-                return
-            
-            report = format_s1_message("📊 ESTADÍSTICAS USUARIOS", [
-                f"👥 Usuarios totales: {stats['total_users']}",
-                f"🔥 Usuarios activos: {stats['active_users']}",
-                f"📤 Total subidas: {stats['total_uploads']}",
-                f"💾 Espacio usado: {stats['total_size_mb']:.2f} MB",
-                f"📈 Promedio: {stats['total_uploads']/max(stats['active_users'],1):.1f} subidas/usr"
-            ])
-            
-            # Top 5 usuarios
-            if stats['user_details']:
-                top_users = "\n".join([f"┣⪼ {i+1}. {u['username']}: {u['uploads']} ups, {u['size_mb']:.1f} MB" 
-                                      for i, u in enumerate(stats['user_details'][:5])])
-                report += f"\n🏆 TOP 5 USUARIOS:\n{top_users}"
-            
-            bot.sendMessage(update.message.chat.id, report)
-            return
-        
         # COMANDOS DE CONFIGURACIÓN RÁPIDA PARA ADMIN
         if '/moodle_eva' in msgText and isadmin:
             user_info['moodle_host'] = 'https://eva.uo.edu.cu/'
             user_info['moodle_user'] = 'eric.serrano'
             user_info['moodle_password'] = 'Rulebreaker2316'
             user_info['moodle_repo_id'] = 4
-            user_info['uploadtype'] = 'evidence'  # Cambiado a evidence
+            user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
             user_info['zips'] = 99  # 99 MB para EVA
             jdb.save_data_user(username, user_info)
             jdb.save()
-            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para EVA (Evidence)</b>', parse_mode='HTML')
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para EVA</b>', parse_mode='HTML')
             return
 
         if '/moodle_cursos' in msgText and isadmin:
@@ -766,12 +648,12 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_user'] = 'eric.serrano'
             user_info['moodle_password'] = 'Rulebreaker2316'
             user_info['moodle_repo_id'] = 4
-            user_info['uploadtype'] = 'evidence'  # Cambiado a evidence
+            user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
             user_info['zips'] = 99  # 99 MB para CURSOS
             jdb.save_data_user(username, user_info)
             jdb.save()
-            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CURSOS (Evidence)</b>', parse_mode='HTML')
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CURSOS</b>', parse_mode='HTML')
             return
 
         if '/moodle_cened' in msgText and isadmin:
@@ -779,12 +661,12 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_user'] = 'eliel21'
             user_info['moodle_password'] = 'ElielThali2115.'
             user_info['moodle_repo_id'] = 5
-            user_info['uploadtype'] = 'evidence'  # Cambiado a evidence
+            user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
             user_info['zips'] = 100  # 100 MB para CENED
             jdb.save_data_user(username, user_info)
             jdb.save()
-            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CENED (Evidence)</b>', parse_mode='HTML')
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para CENED</b>', parse_mode='HTML')
             return
 
         # NUEVO COMANDO - CONFIGURACIÓN INSTEC
@@ -792,17 +674,490 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_host'] = 'https://moodle.instec.cu/'
             user_info['moodle_user'] = 'Kevin.cruz'
             user_info['moodle_password'] = 'Kevin10.'
-            user_info['moodle_repo_id'] = 4
-            user_info['uploadtype'] = 'evidence'  # Cambiado a evidence
+            user_info['moodle_repo_id'] = 3
+            user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
             user_info['zips'] = 99  # 99 MB para INSTEC
             jdb.save_data_user(username, user_info)
             jdb.save()
-            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para INSTEC (Evidence)</b>', parse_mode='HTML')
+            bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para INSTEC</b>', parse_mode='HTML')
             return
         
-        # [El resto del código permanece igual...]
-        # COMANDO ADDUSERCONFIG, BANUSER, etc...
+        # COMANDO ADDUSERCONFIG MEJORADO - Agrega y configura usuarios
+        if '/adduserconfig' in msgText:
+            isadmin = jdb.is_admin(username)
+            if isadmin:
+                try:
+                    # Formato: /adduserconfig usuario1,usuario2 [eva|cursos|cened|instec]
+                    parts = str(msgText).split(' ', 2)
+                    if len(parts) < 3:
+                        bot.sendMessage(update.message.chat.id,
+                                       '<b>❌ Formato incorrecto</b>\n\n'
+                                       '<b>Formatos válidos:</b>\n'
+                                       '<code>/adduserconfig usuario eva</code>\n'
+                                       '<code>/adduserconfig usuario1,usuario2 cursos</code>\n'
+                                       '<code>/adduserconfig usuario cened</code>\n'
+                                       '<code>/adduserconfig usuario instec</code>',
+                                       parse_mode='HTML')
+                        return
+                    
+                    target_users_text = parts[1]
+                    platform = parts[2].strip().lower()
+                    
+                    # CONFIGURACIONES PREDEFINIDAS
+                    configs = {
+                        'eva': {
+                            'host': 'https://eva.uo.edu.cu/',
+                            'user': 'eric.serrano',
+                            'password': 'Rulebreaker2316',
+                            'repo_id': 4,
+                            'uptype': 'draft',
+                            'name': 'EVA UO',
+                            'zips': 99  # 99 MB para EVA
+                        },
+                        'cursos': {
+                            'host': 'https://cursos.uo.edu.cu/',
+                            'user': 'eric.serrano', 
+                            'password': 'Rulebreaker2316',
+                            'repo_id': 4,
+                            'uptype': 'draft',
+                            'name': 'CURSOS UO',
+                            'zips': 99  # 99 MB para CURSOS
+                        },
+                        'cened': {
+                            'host': 'https://aulacened.uci.cu/',
+                            'user': 'eliel21',
+                            'password': 'ElielThali2115.',
+                            'repo_id': 5,
+                            'uptype': 'draft',
+                            'name': 'CENED',
+                            'zips': 100  # 100 MB para CENED
+                        },
+                        'instec': {  # NUEVA CONFIGURACIÓN
+                            'host': 'https://moodle.instec.cu/',
+                            'user': 'Kevin.cruz',
+                            'password': 'Kevin10.',
+                            'repo_id': 3,
+                            'uptype': 'draft',
+                            'name': 'INSTEC',
+                            'zips': 99  # 99 MB para INSTEC
+                        }
+                    }
+                    
+                    # Validar plataforma
+                    if platform not in configs:
+                        bot.sendMessage(update.message.chat.id,
+                                       '<b>❌ Plataforma no válida</b>\n'
+                                       '<b>Opciones:</b> eva, cursos, cened, instec',
+                                       parse_mode='HTML')
+                        return
+                    
+                    # Procesar múltiples usuarios (con @ o sin @)
+                    raw_users = [user.strip() for user in target_users_text.split(',')]
+                    target_users = []
+                    for user in raw_users:
+                        if user:
+                            # Agregar @ si no lo tiene
+                            if not user.startswith('@'):
+                                user = '@' + user
+                            target_users.append(user)
+                    
+                    config = configs[platform]
+                    
+                    configured_users = []
+                    existing_users = []
+                    
+                    for target_user in target_users:
+                        if not target_user:
+                            continue
+                            
+                        # Prevenir auto-configuración del admin
+                        if target_user == f'@{username}':
+                            continue
+                        
+                        username_clean = target_user.replace('@', '')
+                        
+                        # Verificar si el usuario ya existe
+                        if jdb.get_user(username_clean):
+                            existing_users.append(target_user)
+                            continue
+                        
+                        # Crear usuario nuevo
+                        jdb.create_user(username_clean)
+                        
+                        # Obtener y configurar usuario
+                        new_user_info = jdb.get_user(username_clean)
+                        new_user_info['moodle_host'] = config['host']
+                        new_user_info['moodle_user'] = config['user']
+                        new_user_info['moodle_password'] = config['password']
+                        new_user_info['moodle_repo_id'] = config['repo_id']
+                        new_user_info['uploadtype'] = config['uptype']
+                        new_user_info['cloudtype'] = 'moodle'
+                        new_user_info['zips'] = config['zips']
+                        new_user_info['tokenize'] = 0
+                        new_user_info['proxy'] = ''
+                        new_user_info['dir'] = '/'
+                        
+                        jdb.save_data_user(username_clean, new_user_info)
+                        configured_users.append(target_user)
+                    
+                    jdb.save()
+                    
+                    # Construir mensaje de resultado
+                    message_parts = []
+                    
+                    if configured_users:
+                        if len(configured_users) == 1:
+                            user_msg = format_s1_message("✅ Usuario Agregado y Configurado", [
+                                f"👤 Usuario: {configured_users[0]}",
+                                f"🏫 Plataforma: {config['name']}"
+                            ])
+                            message_parts.append(user_msg)
+                        else:
+                            users_list = ', '.join(configured_users)
+                            message_parts.append(f'<b>✅ Usuarios agregados y configurados:</b> {users_list}\n<b>Plataforma:</b> {config["name"]}')
+                    
+                    if existing_users:
+                        if len(existing_users) == 1:
+                            message_parts.append(f'<b>⚠️ Usuario ya existente:</b> {existing_users[0]}')
+                        else:
+                            users_list = ', '.join(existing_users)
+                            message_parts.append(f'<b>⚠️ Usuarios ya existentes:</b> {users_list}')
+                    
+                    if message_parts:
+                        final_message = '\n\n'.join(message_parts)
+                    else:
+                        final_message = '<b>❌ No se agregaron usuarios</b>'
+                        
+                    bot.sendMessage(update.message.chat.id, final_message, parse_mode='HTML')
+                    
+                except Exception as e:
+                    print(f"Error en adduserconfig: {e}")
+                    bot.sendMessage(update.message.chat.id,
+                                   '<b>❌ Error en el comando</b>\n'
+                                   '<code>/adduserconfig usuario plataforma</code>',
+                                   parse_mode='HTML')
+            else:
+                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
+            return
+
+        # BLOQUEAR COMANDOS DE ADMIN PARA USUARIOS NORMALES
+        if not isadmin and is_text and any(cmd in msgText for cmd in [
+            '/zips', '/account', '/host', '/repoid', '/tokenize', 
+            '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
+            '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
+            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened', '/moodle_instec'
+        ]):
+            bot.sendMessage(update.message.chat.id,
+                           "<b>🚫 Acceso Restringido</b>\n\n"
+                           "Los comandos de configuración están disponibles solo para administradores.\n\n"
+                           "<b>✅ Comandos disponibles para ti:</b>\n"
+                           "• /start - Información del bot\n"
+                           "• /tutorial - Guía de uso completo\n"
+                           "• Enlaces HTTP/HTTPS para subir archivos",
+                           parse_mode='HTML')
+            return
+
+        # MENSAJE PARA TEXTO SIN COMANDOS NI URLS
+        if is_text and not msgText.startswith('/') and not 'http' in msgText:
+            bot.sendMessage(update.message.chat.id,
+                           "<b>🤖 Bot de Subida de Archivos</b>\n\n"
+                           "📤 <b>Para subir archivos:</b> Envía un enlace HTTP/HTTPS\n\n"
+                           "📝 <b>Para ver comandos disponibles:</b> Usa /start",
+                           parse_mode='HTML')
+            return
+
+        # COMANDO BANUSER
+        if '/banuser' in msgText:
+            isadmin = jdb.is_admin(username)
+            if isadmin:
+                try:
+                    users_text = str(msgText).split(' ', 1)[1]
+                    
+                    # Procesar múltiples usuarios (con @ o sin @)
+                    raw_users = [user.strip() for user in users_text.split(',')]
+                    target_users = []
+                    for user in raw_users:
+                        if user:
+                            # Agregar @ si no lo tiene
+                            if not user.startswith('@'):
+                                user = '@' + user
+                            target_users.append(user)
+                    
+                    banned_users = []
+                    not_found_users = []
+                    self_ban_attempt = False
+                    
+                    for target_user in target_users:
+                        if target_user:
+                            if target_user == f'@{username}':
+                                self_ban_attempt = True
+                                continue
+                            username_clean = target_user.replace('@', '')
+                            if jdb.get_user(username_clean):
+                                jdb.remove(username_clean)
+                                banned_users.append(target_user)
+                            else:
+                                not_found_users.append(target_user)
+                    
+                    jdb.save()
+                    
+                    message_parts = []
+                    
+                    if banned_users:
+                        if len(banned_users) == 1:
+                            message_parts.append(f'<b>🚫 Usuario baneado:</b> {banned_users[0]}')
+                        else:
+                            users_list = ', '.join(banned_users)
+                            message_parts.append(f'<b>🚫 Usuarios baneados:</b> {users_list}')
+                    
+                    if not_found_users:
+                        if len(not_found_users) == 1:
+                            message_parts.append(f'<b>❌ Usuario no encontrado:</b> {not_found_users[0]}')
+                        else:
+                            users_list = ', '.join(not_found_users)
+                            message_parts.append(f'<b>❌ Usuarios no encontrados:</b> {users_list}')
+                    
+                    if self_ban_attempt:
+                        message_parts.append('<b>⚠️ No puedes banearte a ti mismo</b>')
+                    
+                    if message_parts:
+                        final_message = '\n\n'.join(message_parts)
+                    else:
+                        final_message = '<b>❌ No se proporcionaron usuarios válidos</b>'
+                        
+                    bot.sendMessage(update.message.chat.id, final_message, parse_mode='HTML')
+                    
+                except Exception as e:
+                    print(f"Error en banuser: {e}")
+                    bot.sendMessage(update.message.chat.id,
+                                   '<b>❌ Error en el comando:</b>\n'
+                                   '<code>/banuser user1, user2, user3</code>\n\n'
+                                   '<b>Ejemplos:</b>\n'
+                                   '<code>/banuser juan</code>\n'
+                                   '<code>/banuser juan, maria, pedro</code>', 
+                                   parse_mode='HTML')
+            else:
+                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
+            return
+
+        if '/getdb' in msgText:
+            isadmin = jdb.is_admin(username)
+            if isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>📦 Base de datos:</b>', parse_mode='HTML')
+                bot.sendFile(update.message.chat.id,'database.jdb')
+            else:
+                bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
+            return
+
+        # COMANDO TUTORIAL (LEE DESDE ARCHIVO)
+        if '/tutorial' in msgText:
+            try:
+                tuto = open('tuto.txt','r', encoding='utf-8')
+                tutorial_content = tuto.read()
+                tuto.close()
+                bot.sendMessage(update.message.chat.id, tutorial_content)
+            except Exception as e:
+                print(f"Error cargando tutorial: {e}")
+                bot.sendMessage(update.message.chat.id,'<b>📚 Archivo de tutorial no disponible</b>', parse_mode='HTML')
+            return
+
+        # COMANDOS DE USUARIO (SOLO PARA ADMINISTRADOR)
+        if '/myuser' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            getUser = user_info
+            if getUser:
+                statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+                return
+        if '/zips' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            getUser = user_info
+            if getUser:
+                try:
+                   size = int(str(msgText).split(' ')[1])
+                   getUser['zips'] = size
+                   jdb.save_data_user(username,getUser)
+                   jdb.save()
+                   msg = f'<b>✅ Zips configurados a</b> {sizeof_fmt(size*1024*1024)} <b>por parte</b>'
+                   bot.sendMessage(update.message.chat.id,msg, parse_mode='HTML')
+                except:
+                   bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/zips tamaño_en_mb</code>', parse_mode='HTML')
+                return
+        if '/account' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                account = str(msgText).split(' ',2)[1].split(',')
+                user = account[0]
+                passw = account[1]
+                getUser = user_info
+                if getUser:
+                    getUser['moodle_user'] = user
+                    getUser['moodle_password'] = passw
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/account usuario,contraseña</code>', parse_mode='HTML')
+            return
+        if '/host' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                cmd = str(msgText).split(' ',2)
+                host = cmd[1]
+                getUser = user_info
+                if getUser:
+                    getUser['moodle_host'] = host
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/host url_del_moodle</code>', parse_mode='HTML')
+            return
+        if '/repoid' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                cmd = str(msgText).split(' ',2)
+                repoid = int(cmd[1])
+                getUser = user_info
+                if getUser:
+                    getUser['moodle_repo_id'] = repoid
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/repoid id_del_repositorio</code>', parse_mode='HTML')
+            return
+        if '/tokenize_on' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                getUser = user_info
+                if getUser:
+                    getUser['tokenize'] = 1
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error activando tokenize</b>', parse_mode='HTML')
+            return
+        if '/tokenize_off' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                getUser = user_info
+                if getUser:
+                    getUser['tokenize'] = 0
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error desactivando tokenize</b>', parse_mode='HTML')
+            return
+        if '/cloud' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                cmd = str(msgText).split(' ',2)
+                repoid = cmd[1]
+                getUser = user_info
+                if getUser:
+                    getUser['cloudtype'] = repoid
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/cloud (moodle o cloud)</code>', parse_mode='HTML')
+            return
+        if '/uptype' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                cmd = str(msgText).split(' ',2)
+                type = cmd[1]
+                getUser = user_info
+                if getUser:
+                    getUser['uploadtype'] = type
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/uptype (evidence, draft, blog)</code>', parse_mode='HTML')
+            return
+        if '/proxy' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                cmd = str(msgText).split(' ',2)
+                proxy = cmd[1]
+                getUser = user_info
+                if getUser:
+                    getUser['proxy'] = proxy
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                if user_info:
+                    user_info['proxy'] = ''
+                    statInfo = infos.createStat(username,user_info,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            return
+        if '/dir' in msgText:
+            if not isadmin:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
+                return
+            try:
+                cmd = str(msgText).split(' ',2)
+                repoid = cmd[1]
+                getUser = user_info
+                if getUser:
+                    getUser['dir'] = repoid + '/'
+                    jdb.save_data_user(username,getUser)
+                    jdb.save()
+                    statInfo = infos.createStat(username,getUser,jdb.is_admin(username))
+                    bot.sendMessage(update.message.chat.id,statInfo, parse_mode='HTML')
+            except:
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/dir nombre_carpeta</code>', parse_mode='HTML')
+            return
+        if '/cancel_' in msgText:
+            try:
+                cmd = str(msgText).split('_',2)
+                tid = cmd[1]
+                if tid in bot.threads:
+                    tcancel = bot.threads[tid]
+                    msg = tcancel.getStore('msg')
+                    tcancel.store('stop',True)
+                    time.sleep(2)
+                    bot.editMessageText(msg,'<b>❌ Tarea Cancelada</b>', parse_mode='HTML')
+                else:
+                    bot.sendMessage(update.message.chat.id,'<b>❌ Proceso no encontrado o ya finalizado</b>', parse_mode='HTML')
+            except Exception as ex:
+                print(str(ex))
+                bot.sendMessage(update.message.chat.id,'<b>❌ Error al cancelar</b>', parse_mode='HTML')
+            return
 
         message = bot.sendMessage(update.message.chat.id,'<b>⏳ Procesando...</b>', parse_mode='HTML')
 
@@ -829,16 +1184,15 @@ def onmessage(update,bot:ObigramClient):
 {duration_info}┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
 ┣⪼ ⚙️ CONFIGURACIÓN RÁPIDA:
-┣⪼ /moodle_eva - EVA (Evidence)
-┣⪼ /moodle_cursos - CURSOS (Evidence)  
-┣⪼ /moodle_cened - CENED (Evidence)
-┣⪼ /moodle_instec - INSTEC (Evidence)
+┣⪼ /moodle_eva - EVA
+┣⪼ /moodle_cursos - CURSOS  
+┣⪼ /moodle_cened - CENED
+┣⪼ /moodle_instec - INSTEC
 
 ┣⪼ 👥 GESTIÓN DE USUARIOS:
 ┣⪼ /adduserconfig - Agregar y configurar
 ┣⪼ /banuser - Eliminar usuario(s)
 ┣⪼ /getdb - Base de datos
-┣⪼ /stat - Estadísticas
 
 ┣⪼ ⚡ CONFIGURACIÓN AVANZADA:
 ┣⪼ /myuser - Mi configuración
