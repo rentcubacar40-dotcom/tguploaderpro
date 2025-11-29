@@ -862,12 +862,119 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ No tiene permisos de administrador</b>', parse_mode='HTML')
             return
 
+        # NUEVOS COMANDOS DE MENSAJERÍA PARA ADMIN
+        if '/msg_all' in msgText and isadmin:
+            try:
+                # Extraer el mensaje
+                message_text = str(msgText).split(' ', 1)[1].strip()
+                if not message_text:
+                    bot.sendMessage(update.message.chat.id,
+                                   '<b>❌ Error:</b> Debes escribir un mensaje\n'
+                                   '<b>Formato:</b> <code>/msg_all tu mensaje aquí</code>',
+                                   parse_mode='HTML')
+                    return
+                
+                # Obtener todos los usuarios
+                all_users = jdb.get_all_users()
+                total_users = len(all_users)
+                successful_sends = 0
+                failed_sends = 0
+                failed_usernames = []
+                
+                # Enviar mensaje a cada usuario
+                for user_data in all_users:
+                    user_username = user_data['username']
+                    try:
+                        # Formato del mensaje para usuarios
+                        user_message = f"📢 Mensaje del Administrador:\n\n{message_text}\n\n---\n🤖 Bot de Moodle"
+                        bot.sendMessage(user_username, user_message)
+                        successful_sends += 1
+                    except Exception as e:
+                        failed_sends += 1
+                        failed_usernames.append(user_username)
+                        print(f"Error enviando mensaje a {user_username}: {e}")
+                
+                # Reportar resultados al admin
+                result_message = format_s1_message("📢 Resultado de Envío Masivo", [
+                    f"✅ Enviados: {successful_sends} usuarios",
+                    f"❌ Fallidos: {failed_sends} usuarios",
+                    f"📊 Total: {total_users} usuarios"
+                ])
+                
+                if failed_sends > 0:
+                    result_message += f"\n\n<b>Usuarios con error:</b>\n" + ", ".join(failed_usernames[:10])  # Mostrar solo primeros 10
+                    if len(failed_usernames) > 10:
+                        result_message += f" ... y {len(failed_usernames) - 10} más"
+                
+                bot.sendMessage(update.message.chat.id, result_message, parse_mode='HTML')
+                
+            except Exception as e:
+                print(f"Error en msg_all: {e}")
+                bot.sendMessage(update.message.chat.id,
+                               '<b>❌ Error en el comando</b>\n'
+                               '<b>Formato:</b> <code>/msg_all tu mensaje aquí</code>',
+                               parse_mode='HTML')
+            return
+
+        if '/msg' in msgText and isadmin and not '/msg_all' in msgText:
+            try:
+                # Extraer usuario y mensaje: /msg @usuario mensaje
+                parts = str(msgText).split(' ', 2)
+                if len(parts) < 3:
+                    bot.sendMessage(update.message.chat.id,
+                                   '<b>❌ Formato incorrecto</b>\n\n'
+                                   '<b>Formato:</b> <code>/msg @usuario tu mensaje aquí</code>\n\n'
+                                   '<b>Ejemplo:</b>\n'
+                                   '<code>/msg @juan Tu cuenta ha sido actualizada</code>',
+                                   parse_mode='HTML')
+                    return
+                
+                target_user = parts[1].replace('@', '')  # Remover @ si está presente
+                message_text = parts[2].strip()
+                
+                # Verificar que el usuario existe
+                if not jdb.get_user(target_user):
+                    bot.sendMessage(update.message.chat.id,
+                                   f'<b>❌ Usuario no encontrado</b>\n'
+                                   f'<b>Usuario:</b> @{target_user}\n'
+                                   f'<b>Nota:</b> El usuario debe estar registrado en el bot',
+                                   parse_mode='HTML')
+                    return
+                
+                # Enviar mensaje al usuario específico
+                try:
+                    user_message = f"📢 Mensaje del Administrador:\n\n{message_text}\n\n---\n🤖 Bot de Moodle"
+                    bot.sendMessage(target_user, user_message)
+                    
+                    # Confirmar envío al admin
+                    confirm_message = format_s1_message("✅ Mensaje Enviado", [
+                        f"👤 Usuario: @{target_user}",
+                        f"📝 Mensaje: {message_text}"
+                    ])
+                    bot.sendMessage(update.message.chat.id, confirm_message)
+                    
+                except Exception as e:
+                    bot.sendMessage(update.message.chat.id,
+                                   f'<b>❌ Error enviando mensaje</b>\n'
+                                   f'<b>Usuario:</b> @{target_user}\n'
+                                   f'<b>Error:</b> {str(e)}',
+                                   parse_mode='HTML')
+                
+            except Exception as e:
+                print(f"Error en msg: {e}")
+                bot.sendMessage(update.message.chat.id,
+                               '<b>❌ Error en el comando</b>\n'
+                               '<b>Formato:</b> <code>/msg @usuario tu mensaje aquí</code>',
+                               parse_mode='HTML')
+            return
+
         # BLOQUEAR COMANDOS DE ADMIN PARA USUARIOS NORMALES
         if not isadmin and is_text and any(cmd in msgText for cmd in [
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
             '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
-            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened', '/moodle_instec'
+            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened', '/moodle_instec',
+            '/msg_all', '/msg'
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -1214,6 +1321,8 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /adduserconfig - Agregar y configurar
 ┣⪼ /banuser - Eliminar usuario(s)
 ┣⪼ /getdb - Base de datos
+┣⪼ /msg_all - Mensaje a todos
+┣⪼ /msg - Mensaje individual
 
 ┣⪼ ⚡ CONFIGURACIÓN AVANZADA:
 ┣⪼ /myuser - Mi configuración
