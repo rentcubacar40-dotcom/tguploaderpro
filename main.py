@@ -17,8 +17,6 @@ import youtube
 import NexCloudClient
 
 from pydownloader.downloader import Downloader
-from ProxyCloud import ProxyCloud
-import ProxyCloud
 import socket
 import S5Crypto
 import threading
@@ -159,13 +157,13 @@ def processUploadFiles(filename,filesize,files,update,bot,message,thread=None,jd
         fileid = None
         user_info = jdb.get_user(update.message.sender.username)
         cloudtype = user_info['cloudtype']
-        proxy = ProxyCloud.parse(user_info['proxy'])
+        proxy = user_info['proxy']  # Ahora es string directo
         if cloudtype == 'moodle':
             client = MoodleClient(user_info['moodle_user'],
                                   user_info['moodle_password'],
                                   user_info['moodle_host'],
                                   user_info['moodle_repo_id'],
-                                  proxy=proxy)
+                                  proxy=proxy)  # Pasar string directamente
             loged = client.login()
             itererr = 0
             if not loged:
@@ -322,19 +320,14 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         is_compressed_file = file_extension in ['zip', 'rar', '7z', 'tar', 'gz']
             
         if file_size > max_file_size and not is_compressed_file:
-            # Mostrar información de compresión indicando el origen del tamaño
+            # Mostrar información de compresión (SIMPLIFICADA)
             platform_name = get_platform_name(getUser['moodle_host'])
-            
-            if user_configured_zips and user_configured_zips > 0:
-                size_source = f"🔧 Configuración manual: {user_configured_zips} MB"
-            else:
-                size_source = f"🏫 Configuración plataforma: {platform_name}"
             
             compresingInfo = format_s1_message("🗜️ Comprimiendo Archivo", [
                 f"📄 Archivo: {original_filename}",
                 f"📦 Tamaño original: {sizeof_fmt(file_size)}",
                 f"🗂️ Partes de: {sizeof_fmt(max_file_size)}",
-                size_source
+                f"🏫 Plataforma: {platform_name}"
             ])
             
             bot.editMessageText(message, compresingInfo)
@@ -865,7 +858,7 @@ def onmessage(update,bot:ObigramClient):
         # BLOQUEAR COMANDOS DE ADMIN PARA USUARIOS NORMALES
         if not isadmin and is_text and any(cmd in msgText for cmd in [
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
-            '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
+            '/cloud', '/uptype', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
             '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened', '/moodle_instec'
         ]):
@@ -1127,9 +1120,7 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/uptype (evidence, draft, blog)</code>', parse_mode='HTML')
             return
         if '/proxy' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
+            # ✅ AHORA TODOS LOS USUARIOS PUEDEN CONFIGURAR PROXY
             try:
                 cmd = str(msgText).split(' ',2)
                 proxy = cmd[1]
@@ -1163,6 +1154,17 @@ def onmessage(update,bot:ObigramClient):
             except:
                 bot.sendMessage(update.message.chat.id,'<b>❌ Error:</b> <code>/dir nombre_carpeta</code>', parse_mode='HTML')
             return
+
+        # NUEVO COMANDO: ELIMINAR PROXY (ACCESIBLE PARA TODOS)
+        if '/delproxy' in msgText:
+            getUser = user_info
+            if getUser:
+                getUser['proxy'] = ''
+                jdb.save_data_user(username, getUser)
+                jdb.save()
+                bot.sendMessage(update.message.chat.id, '<b>✅ Proxy eliminado correctamente</b>', parse_mode='HTML')
+            return
+
         if '/cancel_' in msgText:
             try:
                 cmd = str(msgText).split('_',2)
@@ -1223,6 +1225,10 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /repoid - ID Repositorio
 ┣⪼ /uptype - Tipo de subida
 
+┣⪼ 🔌 CONFIGURACIÓN PROXY:
+┣⪼ /proxy socks5://user:pass@ip:port
+┣⪼ /delproxy - Eliminar proxy
+
 ┣⪼ 📚 COMANDOS GENERALES:
 ┣⪼ /tutorial - Guía completa
 ╰━━━━━━━━━━━━━━━➣"""
@@ -1236,6 +1242,10 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ 📝 COMANDOS DISPONIBLES:
 ┣⪼ /start - Información del bot
 ┣⪼ /tutorial - Guía completa
+
+┣⪼ 🔌 CONFIGURACIÓN PROXY:
+┣⪼ /proxy socks5://user:pass@ip:port
+┣⪼ /delproxy - Eliminar proxy
 ╰━━━━━━━━━━━━━━━➣"""
             
             bot.deleteMessage(message.chat.id, message.message_id)
@@ -1244,7 +1254,7 @@ def onmessage(update,bot:ObigramClient):
              if not isadmin:
                 bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
-             proxy = ProxyCloud.parse(user_info['proxy'])
+             proxy = user_info['proxy']  # String directo
              client = MoodleClient(user_info['moodle_user'],
                                    user_info['moodle_password'],
                                    user_info['moodle_host'],
@@ -1263,7 +1273,7 @@ def onmessage(update,bot:ObigramClient):
                 return
              findex = str(msgText).split('_')[1]
              findex = int(findex)
-             proxy = ProxyCloud.parse(user_info['proxy'])
+             proxy = user_info['proxy']  # String directo
              client = MoodleClient(user_info['moodle_user'],
                                    user_info['moodle_password'],
                                    user_info['moodle_host'],
@@ -1289,7 +1299,7 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
             findex = int(str(msgText).split('_')[1])
-            proxy = ProxyCloud.parse(user_info['proxy'])
+            proxy = user_info['proxy']  # String directo
             client = MoodleClient(user_info['moodle_user'],
                                    user_info['moodle_password'],
                                    user_info['moodle_host'],
@@ -1307,7 +1317,7 @@ def onmessage(update,bot:ObigramClient):
             if not isadmin:
                 bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
                 return
-            proxy = ProxyCloud.parse(user_info['proxy'])
+            proxy = user_info['proxy']  # String directo
             client = MoodleClient(user_info['moodle_user'],
                                    user_info['moodle_password'],
                                    user_info['moodle_host'],
