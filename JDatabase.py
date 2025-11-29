@@ -27,30 +27,44 @@ class JsonDatabase(object):
         dbfile.close()
 
     def create_user(self,name):
-        self.items[name] = {'dir': '',
-                     'cloudtype': 'moodle',
-                     'moodle_host': '',
-                     'moodle_repo_id': 4,
-                     'moodle_user': '',
-                     'moodle_password': '',
-                     'isadmin': 0,
-                     'zips': 100,
-                     'uploadtype':'draft',
-                     'proxy':'',
-                     'tokenize':0}
+        self.items[name] = {
+            'dir': '',
+            'cloudtype': 'moodle', 
+            'moodle_host': '',
+            'moodle_repo_id': 4,
+            'moodle_user': '',
+            'moodle_password': '',
+            'isadmin': 0,
+            'zips': 100,
+            'uploadtype':'draft',
+            'proxy':'',
+            'tokenize':0,
+            # ✅ CAMPOS NUEVOS - SOLO para usuarios NUEVOS
+            'total_mb_used': 0,
+            'upload_count': 0,
+            'last_upload': '',
+            'first_upload': ''
+        }
 
     def create_admin(self,name):
-        self.items[name] = {'dir': '',
-                     'cloudtype': 'moodle',
-                     'moodle_host': 'https://aulacened.uci.cu/',
-                     'moodle_repo_id': 5,
-                     'moodle_user': 'eliel21',
-                     'moodle_password': 'ElielThali2115.',
-                     'isadmin': 1,
-                     'zips': 100,
-                     'uploadtype':'draft',
-                     'proxy':'',
-                     'tokenize':0}
+        self.items[name] = {
+            'dir': '',
+            'cloudtype': 'moodle',
+            'moodle_host': 'https://aulacened.uci.cu/',
+            'moodle_repo_id': 5,
+            'moodle_user': 'eliel21',
+            'moodle_password': 'ElielThali2115.',
+            'isadmin': 1,
+            'zips': 100,
+            'uploadtype':'draft',
+            'proxy':'',
+            'tokenize':0,
+            # ✅ CAMPOS NUEVOS - SOLO para administradores NUEVOS  
+            'total_mb_used': 0,
+            'upload_count': 0,
+            'last_upload': '',
+            'first_upload': ''
+        }
 
     def remove(self,name):
         try:
@@ -81,5 +95,9 @@ class JsonDatabase(object):
             tokens = lin.split('=')
             user = tokens[0]
             data = json.loads(str(tokens[1]).replace("'", '"'))
-
+            # ✅ NO HACE FALTA MIGRACIÓN - Los campos se agregarán automáticamente
             self.items[user] = data
+
+    def get_all_users(self):
+        """Obtiene todos los usuarios de la base de datos"""
+        return self.items
