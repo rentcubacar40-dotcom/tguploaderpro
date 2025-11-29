@@ -595,21 +595,62 @@ def get_platform_name(host):
     else:
         return 'Personalizada'
 
-def test_proxy_connection(user_info):
-    """Testea si el proxy actual funciona"""
+def test_moodle_connection(user_info):
+    """Testea la conexión REAL a la Moodle configurada actualmente"""
     try:
         proxy = ProxyCloud.parse(user_info['proxy'])
         client = MoodleClient(
             user_info['moodle_user'],
-            user_info['moodle_password'],
-            user_info['moodle_host'],
-            user_info['moodle_repo_id'],
+            user_info['moodle_password'], 
+            user_info['moodle_host'],  # ✅ Usa la Moodle actual del usuario
+            user_info['moodle_repo_id'],  # ✅ Usa el repo_id actual
             proxy=proxy
         )
-        return client.login()  # Probar login como test de conexión
+        
+        # Intentar login REAL en la Moodle configurada
+        login_success = client.login()
+        
+        if login_success:
+            # Obtener información de la plataforma ACTUAL
+            platform_name = get_platform_name(user_info['moodle_host'])
+            return {
+                'status': 'success',
+                'message': f'✅ Conexión exitosa a {platform_name}',
+                'platform': platform_name,
+                'proxy_used': bool(user_info.get('proxy', '')),
+                'details': 'Login y autenticación correctos',
+                'moodle_host': user_info['moodle_host']  # ✅ Incluir host actual
+            }
+        else:
+            return {
+                'status': 'auth_error',
+                'message': '❌ Error de autenticación en Moodle',
+                'platform': get_platform_name(user_info['moodle_host']),
+                'proxy_used': bool(user_info.get('proxy', '')),
+                'details': 'Credenciales incorrectas o servidor no disponible',
+                'moodle_host': user_info['moodle_host']  # ✅ Incluir host actual
+            }
+            
     except Exception as e:
-        print(f"Error testing proxy: {e}")
-        return False
+        error_msg = str(e).lower()
+        if 'proxy' in error_msg or 'connect' in error_msg or 'timeout' in error_msg:
+            return {
+                'status': 'proxy_error',
+                'message': '❌ Error de conexión del proxy',
+                'platform': get_platform_name(user_info['moodle_host']),
+                'proxy_used': bool(user_info.get('proxy', '')),
+                'details': f'No se pudo conectar a través del proxy: {str(e)}',
+                'moodle_host': user_info['moodle_host']  # ✅ Incluir host actual
+            }
+        else:
+            return {
+                'status': 'unknown_error', 
+                'message': '❌ Error desconocido',
+                'platform': get_platform_name(user_info['moodle_host']),
+                'proxy_used': bool(user_info.get('proxy', '')),
+                'details': str(e),
+                'moodle_host': user_info['moodle_host']  # ✅ Incluir host actual
+            }
 
 def onmessage(update,bot:ObigramClient):
     try:
@@ -657,55 +698,78 @@ def onmessage(update,bot:ObigramClient):
         is_text = msgText != ''
         isadmin = jdb.is_admin(username)
         
-        # NUEVOS COMANDOS PARA PROXY (SIN HTTPS)
+        # COMANDOS DE PROXY MEJORADOS (SOLO SOCKS)
         if '/proxy_test' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            
             try:
                 current_proxy = user_info.get('proxy', '')
+                current_platform = get_platform_name(user_info.get('moodle_host', ''))
+                
+                # Mostrar información inicial del test CON PLATAFORMA ACTUAL
                 if not current_proxy:
-                    bot.sendMessage(update.message.chat.id,
-                        '<b>🔍 Estado del Proxy</b>\n\n'
-                        '<b>Proxy actual:</b> Conexión directa (sin proxy)\n'
-                        '<b>Estado:</b> ✅ Funcionando (si hay conexión a internet)',
-                        parse_mode='HTML'
-                    )
-                    return
-                
-                message = bot.sendMessage(update.message.chat.id, 
-                    f'<b>🧪 Probando proxy...</b>\n<code>{current_proxy}</code>', 
-                    parse_mode='HTML'
-                )
-                
-                if test_proxy_connection(user_info):
-                    bot.editMessageText(message,
-                        f'<b>✅ Proxy FUNCIONA</b>\n\n'
-                        f'<b>Proxy:</b> <code>{current_proxy}</code>\n'
-                        f'<b>Estado:</b> ✅ Conectado correctamente',
-                        parse_mode='HTML'
-                    )
+                    initial_msg = f'<b>🧪 Probando conexión directa a {current_platform}...</b>\n\n'
                 else:
-                    bot.editMessageText(message,
-                        f'<b>❌ Proxy NO FUNCIONA</b>\n\n'
-                        f'<b>Proxy:</b> <code>{current_proxy}</code>\n'
-                        f'<b>Estado:</b> ❌ No se puede conectar\n\n'
-                        f'<b>Solución:</b>\n'
-                        f'• Verifica el formato del proxy\n'
-                        f'• Prueba con /delproxy para conexión directa\n'
-                        f'• Usa /proxy para configurar otro proxy',
-                        parse_mode='HTML'
-                    )
+                    initial_msg = f'<b>🧪 Probando proxy SOCKS en {current_platform}...</b>\n<code>{current_proxy}</code>\n\n'
+                
+                initial_msg += '<b>🔍 Verificando:</b>\n• Conexión al servidor Moodle\n• Autenticación\n• Estado del proxy SOCKS'
+                
+                message = bot.sendMessage(update.message.chat.id, initial_msg, parse_mode='HTML')
+                
+                # Realizar test COMPLETO a la Moodle ACTUAL
+                test_result = test_moodle_connection(user_info)
+                
+                # Construir mensaje de resultados detallado
+                if test_result['status'] == 'success':
+                    result_message = format_s1_message("✅ Test Completado", [
+                        f"🏫 Plataforma: {test_result['platform']}",
+                        f"🔌 Proxy: {'SOCKS' if test_result['proxy_used'] else 'Conexión directa'}",
+                        f"📡 Estado: Conexión exitosa",
+                        f"🔐 Autenticación: Correcta", 
+                        f"🌐 Servidor: {test_result.get('moodle_host', 'N/A')}",
+                        f"💡 Detalles: {test_result['details']}"
+                    ])
+                    
+                elif test_result['status'] == 'auth_error':
+                    result_message = format_s1_message("❌ Error de Autenticación", [
+                        f"🏫 Plataforma: {test_result['platform']}",
+                        f"🔌 Proxy: {'SOCKS' if test_result['proxy_used'] else 'Conexión directa'}", 
+                        f"📡 Estado: Servidor accesible",
+                        f"🔐 Autenticación: Falló",
+                        f"🌐 Servidor: {test_result.get('moodle_host', 'N/A')}",
+                        f"⚠️ Problema: {test_result['details']}",
+                        f"💡 Solución: Verifica usuario/contraseña"
+                    ])
+                    
+                elif test_result['status'] == 'proxy_error':
+                    result_message = format_s1_message("❌ Error de Conexión SOCKS", [
+                        f"🏫 Plataforma: {test_result['platform']}",
+                        f"🔌 Proxy: {'SOCKS CONFIGURADO' if test_result['proxy_used'] else 'Conexión directa'}",
+                        f"📡 Estado: Sin conexión",
+                        f"🔐 Autenticación: No probada", 
+                        f"🌐 Servidor: {test_result.get('moodle_host', 'N/A')}",
+                        f"⚠️ Problema: {test_result['details']}",
+                        f"💡 Solución: Cambia proxy SOCKS o usa /delproxy"
+                    ])
+                    
+                else:
+                    result_message = format_s1_message("❌ Error Desconocido", [
+                        f"🏫 Plataforma: {test_result['platform']}",
+                        f"🔌 Proxy: {'SOCKS' if test_result['proxy_used'] else 'Conexión directa'}",
+                        f"📡 Estado: Error inesperado",
+                        f"🔐 Autenticación: No probada",
+                        f"🌐 Servidor: {test_result.get('moodle_host', 'N/A')}",
+                        f"⚠️ Problema: {test_result['details']}",
+                        f"💡 Solución: Contacta al administrador"
+                    ])
+                
+                bot.editMessageText(message, result_message)
+                
             except Exception as e:
-                bot.sendMessage(update.message.chat.id, f'<b>❌ Error probando proxy:</b>\n<code>{str(e)}</code>', parse_mode='HTML')
+                bot.sendMessage(update.message.chat.id, 
+                               f'<b>❌ Error en el test:</b>\n<code>{str(e)}</code>', 
+                               parse_mode='HTML')
             return
 
         if '/delproxy' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            
             try:
                 old_proxy = user_info.get('proxy', '')
                 user_info['proxy'] = ''
@@ -723,31 +787,30 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id, f'<b>❌ Error:</b> {str(e)}', parse_mode='HTML')
             return
 
-        # COMANDO PROXY MEJORADO (SIN HTTPS)
+        # COMANDO PROXY MEJORADO (SOLO SOCKS)
         if '/proxy' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            
             try:
                 parts = msgText.split(' ', 1)
                 if len(parts) < 2:
-                    # Mostrar ayuda si no se proporciona proxy
+                    # Mostrar ayuda ACTUALIZADA solo para SOCKS
                     current_proxy = user_info.get('proxy', '')
                     proxy_status = "✅ Configurado" if current_proxy else "❌ No configurado"
                     
+                    # Obtener plataforma actual para el mensaje
+                    current_platform = get_platform_name(user_info.get('moodle_host', ''))
+                    
                     bot.sendMessage(update.message.chat.id,
-                        '<b>🔧 Configuración de Proxy</b>\n\n'
-                        f'<b>Proxy actual:</b> <code>{current_proxy if current_proxy else "Conexión directa"}</code>\n'
+                        '<b>🔧 Configuración de Proxy SOCKS</b>\n\n'
+                        f'<b>🏫 Plataforma actual:</b> {current_platform}\n'
+                        f'<b>🔌 Proxy actual:</b> <code>{current_proxy if current_proxy else "Conexión directa"}</code>\n'
                         f'<b>Estado:</b> {proxy_status}\n\n'
-                        '<b>Formatos soportados:</b>\n'
-                        '<code>/proxy http://ip:puerto</code>\n'
+                        '<b>🚫 Solo se aceptan proxies SOCKS:</b>\n'
                         '<code>/proxy socks4://ip:puerto</code>\n'
                         '<code>/proxy socks5://ip:puerto</code>\n\n'
-                        '<b>Ejemplos:</b>\n'
-                        '<code>/proxy http://190.6.64.154:8080</code>\n'
-                        '<code>/proxy socks5://190.6.65.2:1080</code>\n\n'
-                        '<b>Otros comandos:</b>\n'
+                        '<b>📋 Ejemplos SOCKS:</b>\n'
+                        '<code>/proxy socks4://190.6.65.2:1080</code>\n'
+                        '<code>/proxy socks5://201.234.122.100:1080</code>\n\n'
+                        '<b>🔍 Otros comandos:</b>\n'
                         '<code>/proxy_test</code> - Probar proxy actual\n'
                         '<code>/delproxy</code> - Usar conexión directa',
                         parse_mode='HTML'
@@ -757,44 +820,55 @@ def onmessage(update,bot:ObigramClient):
                 proxy_url = parts[1].strip()
                 old_proxy = user_info.get('proxy', '')
                 
-                # Validar formato básico del proxy (SIN HTTPS)
-                if proxy_url and not any(proto in proxy_url for proto in ['http://', 'socks4://', 'socks5://']):
+                # ✅ VALIDACIÓN: Solo permitir SOCKS4 y SOCKS5
+                if proxy_url and not any(proto in proxy_url for proto in ['socks4://', 'socks5://']):
                     bot.sendMessage(update.message.chat.id,
-                        '<b>❌ Formato de proxy inválido</b>\n\n'
-                        '<b>Usa uno de estos formatos:</b>\n'
-                        '<code>http://ip:puerto</code>\n'
+                        '<b>❌ Formato de proxy NO permitido</b>\n\n'
+                        '<b>🚫 Solo se aceptan proxies SOCKS:</b>\n'
                         '<code>socks4://ip:puerto</code>\n'
-                        '<code>socks5://ip:puerto</code>',
+                        '<code>socks5://ip:puerto</code>\n\n'
+                        '<b>📋 Ejemplos válidos:</b>\n'
+                        '<code>socks4://190.6.65.2:1080</code>\n'
+                        '<code>socks5://201.234.122.100:1080</code>\n\n'
+                        '<b>❌ NO se permiten:</b>\n'
+                        '<code>http://...</code>\n'
+                        '<code>https://...</code>',
                         parse_mode='HTML'
                     )
                     return
                 
                 message = bot.sendMessage(update.message.chat.id, 
-                    f'<b>🔧 Configurando proxy...</b>\n<code>{proxy_url}</code>', 
+                    f'<b>🔧 Configurando proxy SOCKS...</b>\n<code>{proxy_url}</code>\n\n'
+                    f'<b>🧪 Probando conexión a Moodle...</b>', 
                     parse_mode='HTML'
                 )
                 
-                # Probar el nuevo proxy antes de guardarlo
+                # Configurar proxy temporalmente para el test
                 test_user_info = user_info.copy()
                 test_user_info['proxy'] = proxy_url
                 
-                if proxy_url and not test_proxy_connection(test_user_info):
+                # Hacer test COMPLETO con el nuevo proxy SOCKS
+                test_result = test_moodle_connection(test_user_info)
+                
+                if test_result['status'] != 'success':
+                    # Si el test falla, ofrecer opciones
                     bot.editMessageText(message,
-                        f'<b>❌ Proxy no funciona</b>\n\n'
-                        f'<b>Proxy:</b> <code>{proxy_url}</code>\n'
-                        f'<b>Estado:</b> ❌ No se pudo conectar\n\n'
+                        f'<b>❌ Proxy SOCKS no funciona</b>\n\n'
+                        f'<b>🏫 Plataforma:</b> {test_result["platform"]}\n'
+                        f'<b>🔌 Proxy:</b> <code>{proxy_url}</code>\n'
+                        f'<b>Estado:</b> {test_result["message"]}\n'
+                        f'<b>Detalles:</b> {test_result["details"]}\n\n'
                         f'<b>¿Quieres guardarlo de todas formas?</b>\n'
                         f'Responde <code>/confirm_proxy</code> para guardar\n'
-                        f'o configura otro proxy',
+                        f'o configura otro proxy SOCKS',
                         parse_mode='HTML'
                     )
-                    # Guardar temporalmente para confirmación
                     user_info['temp_proxy'] = proxy_url
                     jdb.save_data_user(username, user_info)
                     jdb.save()
                     return
                 
-                # Guardar el proxy
+                # Si el test es exitoso, guardar directamente
                 user_info['proxy'] = proxy_url
                 if 'temp_proxy' in user_info:
                     del user_info['temp_proxy']
@@ -802,24 +876,23 @@ def onmessage(update,bot:ObigramClient):
                 jdb.save()
                 
                 bot.editMessageText(message,
-                    f'<b>✅ Proxy configurado</b>\n\n'
-                    f'<b>Proxy anterior:</b> <code>{old_proxy if old_proxy else "Ninguno"}</code>\n'
-                    f'<b>Proxy nuevo:</b> <code>{proxy_url if proxy_url else "Conexión directa"}</code>\n'
-                    f'<b>Estado:</b> ✅ Configurado correctamente\n\n'
-                    f'<b>Usa /proxy_test para verificar la conexión</b>',
+                    f'<b>✅ Proxy SOCKS configurado y verificado</b>\n\n'
+                    f'<b>🏫 Plataforma:</b> {test_result["platform"]}\n'
+                    f'<b>🔌 Proxy anterior:</b> <code>{old_proxy if old_proxy else "Ninguno"}</code>\n'
+                    f'<b>🔌 Proxy nuevo:</b> <code>{proxy_url}</code>\n'
+                    f'<b>📡 Estado:</b> ✅ Funcionando correctamente\n\n'
+                    f'<b>¡Proxy SOCKS listo para usar!</b>',
                     parse_mode='HTML'
                 )
                 
             except Exception as e:
-                bot.sendMessage(update.message.chat.id, f'<b>❌ Error configurando proxy:</b>\n<code>{str(e)}</code>', parse_mode='HTML')
+                bot.sendMessage(update.message.chat.id, 
+                               f'<b>❌ Error configurando proxy SOCKS:</b>\n<code>{str(e)}</code>', 
+                               parse_mode='HTML')
             return
 
         # CONFIRMACIÓN DE PROXY (cuando no funciona pero se quiere guardar)
         if '/confirm_proxy' in msgText:
-            if not isadmin:
-                bot.sendMessage(update.message.chat.id,'<b>❌ Comando restringido a administradores</b>', parse_mode='HTML')
-                return
-            
             try:
                 temp_proxy = user_info.get('temp_proxy', '')
                 if not temp_proxy:
@@ -833,7 +906,7 @@ def onmessage(update,bot:ObigramClient):
                 jdb.save()
                 
                 bot.sendMessage(update.message.chat.id,
-                    f'<b>⚠️ Proxy guardado (sin verificación)</b>\n\n'
+                    f'<b>⚠️ Proxy SOCKS guardado (sin verificación)</b>\n\n'
                     f'<b>Proxy anterior:</b> <code>{old_proxy if old_proxy else "Ninguno"}</code>\n'
                     f'<b>Proxy nuevo:</b> <code>{temp_proxy}</code>\n'
                     f'<b>Estado:</b> ⚠️ Guardado sin verificación\n\n'
@@ -1060,10 +1133,10 @@ def onmessage(update,bot:ObigramClient):
         # BLOQUEAR COMANDOS DE ADMIN PARA USUARIOS NORMALES
         if not isadmin and is_text and any(cmd in msgText for cmd in [
             '/zips', '/account', '/host', '/repoid', '/tokenize', 
-            '/cloud', '/uptype', '/proxy', '/dir', '/myuser', 
+            '/cloud', '/uptype', '/dir', '/myuser', 
             '/files', '/txt_', '/del_', '/delall', '/adduserconfig', 
-            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened', '/moodle_instec',
-            '/proxy_test', '/delproxy', '/confirm_proxy'
+            '/banuser', '/getdb', '/moodle_eva', '/moodle_cursos', '/moodle_cened', '/moodle_instec'
+            # LOS COMANDOS DE PROXY SE ELIMINARON DE ESTA LISTA
         ]):
             bot.sendMessage(update.message.chat.id,
                            "<b>🚫 Acceso Restringido</b>\n\n"
@@ -1071,6 +1144,9 @@ def onmessage(update,bot:ObigramClient):
                            "<b>✅ Comandos disponibles para ti:</b>\n"
                            "• /start - Información del bot\n"
                            "• /tutorial - Guía de uso completo\n"
+                           "• /proxy - Configurar proxy SOCKS\n"
+                           "• /proxy_test - Probar proxy actual\n"
+                           "• /delproxy - Usar conexión directa\n"
                            "• Enlaces HTTP/HTTPS para subir archivos",
                            parse_mode='HTML')
             return
@@ -1080,6 +1156,10 @@ def onmessage(update,bot:ObigramClient):
             bot.sendMessage(update.message.chat.id,
                            "<b>🤖 Bot de Subida de Archivos</b>\n\n"
                            "📤 <b>Para subir archivos:</b> Envía un enlace HTTP/HTTPS\n\n"
+                           "🔧 <b>Comandos de Proxy:</b>\n"
+                           "• /proxy - Configurar proxy SOCKS\n"
+                           "• /proxy_test - Probar conexión\n"
+                           "• /delproxy - Conexión directa\n\n"
                            "📝 <b>Para ver comandos disponibles:</b> Usa /start",
                            parse_mode='HTML')
             return
@@ -1391,7 +1471,7 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ /moodle_instec - INSTEC
 
 ┣⪼ 🔧 COMANDOS PROXY:
-┣⪼ /proxy - Configurar proxy
+┣⪼ /proxy - Configurar proxy SOCKS
 ┣⪼ /proxy_test - Probar proxy
 ┣⪼ /delproxy - Conexión directa
 
@@ -1418,7 +1498,12 @@ def onmessage(update,bot:ObigramClient):
 ┣⪼ 🏫 Plataforma: {platform_name}
 {proxy_status}{duration_info}┣⪼ 📤 Envía enlaces HTTP/HTTPS
 
-┣⪼ 📝 COMANDOS DISPONIBLES:
+┣⪼ 🔧 COMANDOS PROXY:
+┣⪼ /proxy - Configurar proxy SOCKS
+┣⪼ /proxy_test - Probar proxy
+┣⪼ /delproxy - Conexión directa
+
+┣⪼ 📝 COMANDOS GENERALES:
 ┣⪼ /start - Información del bot
 ┣⪼ /tutorial - Guía completa
 ╰━━━━━━━━━━━━━━━➣"""
