@@ -15,6 +15,7 @@ import datetime
 import time
 import youtube
 import NexCloudClient
+import pytz
 
 from pydownloader.downloader import Downloader
 from ProxyCloud import ProxyCloud
@@ -22,6 +23,28 @@ import ProxyCloud
 import socket
 import S5Crypto
 import threading
+
+# Configurar zona horaria de Cuba
+CUBA_TZ = pytz.timezone('America/Havana')
+
+def get_cuba_time_formatted():
+    """Obtiene la hora actual de Cuba en formato español"""
+    cuba_time = datetime.datetime.now(CUBA_TZ)
+    
+    # Diccionario de meses en español
+    meses = {
+        1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril',
+        5: 'mayo', 6: 'junio', 7: 'julio', 8: 'agosto',
+        9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+    }
+    
+    # Formatear hora en 12 horas con AM/PM
+    hora_12 = cuba_time.strftime("%I:%M %p").lstrip('0')  # Quitar cero inicial
+    
+    # Construir fecha en español
+    fecha_espanol = f"{cuba_time.day} de {meses[cuba_time.month]} de {cuba_time.year} {hora_12}"
+    
+    return fecha_espanol
 
 def create_progress_bar(percentage, bars=15):
     """Crea barra de progreso estilo S1 con ⬢⬡"""
@@ -76,9 +99,11 @@ def save_upload_stats(jdb, username, file_size, original_filename, file_upload_c
             return False
             
         file_size_mb = file_size / (1024 * 1024)
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # ✅ USAR .get() CON VALORES POR DEFECTO - FUNCIONA CON USUARIOS NUEVOS Y ANTIGUOS
+        # ✅ OBTENER HORA DE CUBA EN ESPAÑOL
+        current_time = get_cuba_time_formatted()
+        
+        # DATOS ESTADÍSTICOS
         user_info['total_mb_used'] = user_info.get('total_mb_used', 0) + file_size_mb
         user_info['last_upload'] = current_time
         user_info['upload_count'] = user_info.get('upload_count', 0) + 1
@@ -87,11 +112,11 @@ def save_upload_stats(jdb, username, file_size, original_filename, file_upload_c
         if not user_info.get('first_upload'):
             user_info['first_upload'] = current_time
             
-        # GUARDAR EN BASE DE DATOS
+        # GUARDAR
         jdb.save_data_user(username, user_info)
         jdb.save()
         
-        print(f"✅ Estadísticas guardadas para @{username}: {file_size_mb:.2f} MB")
+        print(f"✅ Estadísticas guardadas para @{username}: {file_size_mb:.2f} MB - Hora Cuba: {current_time}")
         return True
         
     except Exception as e:
@@ -158,10 +183,33 @@ def get_all_users_stats(jdb, admin_username):
         # Considerar usuario activo si ha subido algo en los últimos 30 días
         if user_data.get('last_upload'):
             try:
-                last_upload_date = datetime.datetime.strptime(user_data['last_upload'], "%Y-%m-%d %H:%M:%S")
-                days_since_upload = (datetime.datetime.now() - last_upload_date).days
-                if days_since_upload <= 30:
-                    active_users += 1
+                # Convertir fecha de español a datetime para cálculo
+                fecha_str = user_data['last_upload']
+                for mes_num, mes_nombre in {
+                    1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril',
+                    5: 'mayo', 6: 'junio', 7: 'julio', 8: 'agosto',
+                    9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+                }.items():
+                    if mes_nombre in fecha_str:
+                        # Extraer día, año y hora
+                        partes = fecha_str.split(' de ')
+                        dia = int(partes[0])
+                        año = int(partes[2].split(' ')[0])
+                        hora_str = partes[2].split(' ')[1] + ' ' + partes[2].split(' ')[2]
+                        
+                        # Convertir hora 12h a 24h
+                        from datetime import datetime
+                        hora_24 = datetime.strptime(hora_str, '%I:%M %p').strftime('%H:%M')
+                        
+                        # Crear datetime object
+                        fecha_dt = datetime(año, mes_num, dia, 
+                                          int(hora_24.split(':')[0]), 
+                                          int(hora_24.split(':')[1]))
+                        
+                        days_since_upload = (datetime.now() - fecha_dt).days
+                        if days_since_upload <= 30:
+                            active_users += 1
+                        break
             except:
                 pass
     
@@ -181,7 +229,7 @@ def get_all_users_stats(jdb, admin_username):
     
     # Agregar top usuarios si hay datos
     if top_users:
-        stats_message += "\n\n🏆 **Top 10 Usuarios Más Activos:**\n"
+        stats_message += "\n\n🏆 Top 10 Usuarios Más Activos:\n"
         for i, user in enumerate(top_users, 1):
             stats_message += f"{i}. @{user['username']} - {user['uploads']} subidas ({format_size(user['mb_used'] * 1024 * 1024)})\n"
     
