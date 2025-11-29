@@ -288,16 +288,23 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         username = update.message.sender.username
         getUser = jdb.get_user(username)
         
-        # CONFIGURAR ZIPS SEGÚN PLATAFORMA
-        if getUser['moodle_host'] == 'https://eva.uo.edu.cu/':
-            max_file_size = 1024 * 1024 * 99  # 99 MB para EVA
-        elif getUser['moodle_host'] == 'https://cursos.uo.edu.cu/':
-            max_file_size = 1024 * 1024 * 99  # 99 MB para CURSOS
-        elif getUser['moodle_host'] == 'https://moodle.instec.cu/':  # NUEVA PLATAFORMA INSTEC
-            max_file_size = 1024 * 1024 * 99  # 99 MB para INSTEC
+        # ✅ SOLUCIÓN IMPLEMENTADA: PRIORIDAD PARA COMANDO /ZIPS
+        user_configured_zips = getUser.get('zips')
+        
+        # Si el usuario configuró manualmente con /zips, usar ese valor
+        if user_configured_zips and user_configured_zips > 0:
+            max_file_size = 1024 * 1024 * user_configured_zips
         else:
-            max_file_size = 1024 * 1024 * getUser['zips']  # 100 MB para CENED por defecto
-            
+            # Si no, usar los valores fijos por plataforma
+            if getUser['moodle_host'] == 'https://eva.uo.edu.cu/':
+                max_file_size = 1024 * 1024 * 99  # 99 MB para EVA
+            elif getUser['moodle_host'] == 'https://cursos.uo.edu.cu/':
+                max_file_size = 1024 * 1024 * 99  # 99 MB para CURSOS
+            elif getUser['moodle_host'] == 'https://moodle.instec.cu/':  
+                max_file_size = 1024 * 1024 * 100  # ✅ 100 MB para INSTEC
+            else:
+                max_file_size = 1024 * 1024 * 100  # 100 MB para CENED por defecto
+        
         file_upload_count = 0
         client = None
         findex = 0
@@ -315,8 +322,22 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
         is_compressed_file = file_extension in ['zip', 'rar', '7z', 'tar', 'gz']
             
         if file_size > max_file_size and not is_compressed_file:
-            compresingInfo = infos.createCompresing(file,file_size,max_file_size)
-            bot.editMessageText(message,compresingInfo)
+            # Mostrar información de compresión indicando el origen del tamaño
+            platform_name = get_platform_name(getUser['moodle_host'])
+            
+            if user_configured_zips and user_configured_zips > 0:
+                size_source = f"🔧 Configuración manual: {user_configured_zips} MB"
+            else:
+                size_source = f"🏫 Configuración plataforma: {platform_name}"
+            
+            compresingInfo = format_s1_message("🗜️ Comprimiendo Archivo", [
+                f"📄 Archivo: {original_filename}",
+                f"📦 Tamaño original: {sizeof_fmt(file_size)}",
+                f"🗂️ Partes de: {sizeof_fmt(max_file_size)}",
+                size_source
+            ])
+            
+            bot.editMessageText(message, compresingInfo)
             
             # CREAR ARCHIVO TEMPORAL CON NOMBRE CORRECTO
             temp_dir = "temp_" + createID()
@@ -677,7 +698,7 @@ def onmessage(update,bot:ObigramClient):
             user_info['moodle_repo_id'] = 3
             user_info['uploadtype'] = 'draft'
             user_info['cloudtype'] = 'moodle'
-            user_info['zips'] = 99  # 99 MB para INSTEC
+            user_info['zips'] = 100  # ✅ 100 MB para INSTEC
             jdb.save_data_user(username, user_info)
             jdb.save()
             bot.sendMessage(update.message.chat.id, '<b>✅ Configurado para INSTEC</b>', parse_mode='HTML')
@@ -740,7 +761,7 @@ def onmessage(update,bot:ObigramClient):
                             'repo_id': 3,
                             'uptype': 'draft',
                             'name': 'INSTEC',
-                            'zips': 99  # 99 MB para INSTEC
+                            'zips': 100  # ✅ 100 MB para INSTEC
                         }
                     }
                     
