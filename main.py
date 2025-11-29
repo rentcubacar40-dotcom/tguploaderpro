@@ -874,30 +874,35 @@ def onmessage(update,bot:ObigramClient):
                                    parse_mode='HTML')
                     return
                 
-                # Obtener todos los usuarios
-                all_users = jdb.get_all_users()
-                total_users = len(all_users)
+                # Obtener todos los usuarios desde jdb.items
+                all_users_data = jdb.items
+                total_users = len(all_users_data)
                 successful_sends = 0
                 failed_sends = 0
                 failed_usernames = []
                 
+                # Mostrar mensaje de progreso
+                progress_msg = bot.sendMessage(update.message.chat.id, f'<b>📤 Enviando mensaje a {total_users} usuarios...</b>', parse_mode='HTML')
+                
                 # Enviar mensaje a cada usuario
-                for user_data in all_users:
-                    user_username = user_data['username']
+                for username, user_data in all_users_data.items():
                     try:
                         # Formato del mensaje para usuarios
                         user_message = f"📢 Mensaje del Administrador:\n\n{message_text}\n\n---\n🤖 Bot de Moodle"
-                        bot.sendMessage(user_username, user_message)
+                        bot.sendMessage(username, user_message)
                         successful_sends += 1
                     except Exception as e:
                         failed_sends += 1
-                        failed_usernames.append(user_username)
-                        print(f"Error enviando mensaje a {user_username}: {e}")
+                        failed_usernames.append(username)
+                        print(f"Error enviando mensaje a {username}: {e}")
+                
+                # Eliminar mensaje de progreso
+                bot.deleteMessage(progress_msg.chat.id, progress_msg.message_id)
                 
                 # Reportar resultados al admin
                 result_message = format_s1_message("📢 Resultado de Envío Masivo", [
                     f"✅ Enviados: {successful_sends} usuarios",
-                    f"❌ Fallidos: {failed_sends} usuarios",
+                    f"❌ Fallidos: {failed_sends} usuarios", 
                     f"📊 Total: {total_users} usuarios"
                 ])
                 
@@ -932,8 +937,8 @@ def onmessage(update,bot:ObigramClient):
                 target_user = parts[1].replace('@', '')  # Remover @ si está presente
                 message_text = parts[2].strip()
                 
-                # Verificar que el usuario existe
-                if not jdb.get_user(target_user):
+                # Verificar que el usuario existe en jdb.items
+                if target_user not in jdb.items:
                     bot.sendMessage(update.message.chat.id,
                                    f'<b>❌ Usuario no encontrado</b>\n'
                                    f'<b>Usuario:</b> @{target_user}\n'
