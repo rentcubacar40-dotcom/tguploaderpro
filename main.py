@@ -301,15 +301,15 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,ar
         message = args[1]
         thread = args[2]
         
-        # ✅ VERIFICAR SI CANCELARON
-        if thread and thread.getStore('stop'):
-            if downloader:
-                downloader.stop()
+        # Verificar si el usuario canceló
+        if thread.getStore('stop'):
+            downloader.stop()
             return
             
-        # ✅ SI YA TERMINÓ (100%), NO MOSTRAR NADA MÁS
+        # ✅ ARREGLO CLAVE: DETENER CUANDO LA DESCARGA TERMINA
         if totalBits > 0 and currentBits >= totalBits:
-            # Bot.editMessageText(message, "✅ Descarga completada, procesando...")
+            # Cuando llega al 100%, NO hacer nada más
+            # Dejar que la descarga termine naturalmente
             return
             
         downloadingInfo = ''
@@ -324,20 +324,16 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,ar
         current_mb = currentBits / (1024 * 1024)
         speed_mb = speed / (1024 * 1024) if speed > 0 else 0
         
-        # ✅ FIJAR "Finalizando..." cuando esté cerca del 100%
+        # Cálculo del tiempo - CORREGIDO
         eta_formatted = "Calculando..."
         if speed > 0 and totalBits > currentBits:
             remaining_bits = totalBits - currentBits
-            if remaining_bits > 0:
-                remaining_time = remaining_bits / speed
-                if remaining_time > 1:  # Más de 1 segundo
-                    eta_formatted = format_time(remaining_time)
-                else:
-                    eta_formatted = "Finalizando..."
-        
-        # ✅ SI ESTÁ EN 98% O MÁS, DECIR "Finalizando..."
-        if totalBits > 0 and currentBits >= totalBits * 0.98:
-            eta_formatted = "Finalizando..."
+            remaining_time = remaining_bits / speed
+            # Solo mostrar tiempo si es mayor a 0
+            if remaining_time > 0:
+                eta_formatted = format_time(remaining_time)
+            else:
+                eta_formatted = "Finalizando..."
         
         downloadingInfo = format_s1_message("📥 Descargando", [
             f"[{progress_bar}]",
@@ -345,13 +341,13 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time_elapsed,ar
             f"📦 Tamaño: {current_mb:.1f}/{total_mb:.1f} MB",
             f"⚡ Velocidad: {speed_mb:.1f} MB/s",
             f"⏳ Tiempo: {eta_formatted}",
-            f"🚫 Cancelar: /cancel_{thread.cancel_id if thread else 'none'}"
+            f"🚫 Cancelar: /cancel_{thread.cancel_id}"
         ])
             
         bot.editMessageText(message, downloadingInfo)
         
     except Exception as ex: 
-        print(f"Error en downloadFile: {ex}")
+        print(str(ex))
     pass
 
 def uploadFile(filename,currentBits,totalBits,speed,time_elapsed,args):
@@ -933,56 +929,18 @@ def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
         thread.cancel_id = createID()
         bot.threads[thread.cancel_id] = thread
         
-        # ✅ NUEVO: Variables para controlar el progreso
-        download_complete = False
-        downloaded_file_path = None
-        
-        # ✅ NUEVO: Callback personalizado que detecta cuándo termina
-        def custom_progress_callback(filename, currentBits, totalBits, speed, time_elapsed):
-            nonlocal download_complete, downloaded_file_path
+        file = downloader.download_url(url,progressfunc=downloadFile,args=(bot,message,thread))
+        if not downloader.stoping:
+            if file:
+                processFile(update,bot,message,file,thread=thread,jdb=jdb)
+            else:
+                megadl(update,bot,message,url,file_name,thread,jdb=jdb)
             
-            # Mostrar progreso normal
-            downloadFile(downloader, filename, currentBits, totalBits, speed, time_elapsed, (bot, message, thread))
-            
-            # ✅ DETECTAR CUANDO LA DESCARGA ESTÁ A 99% O MÁS
-            if totalBits > 0 and currentBits >= totalBits * 0.99:  # 99% completado
-                if not download_complete:
-                    download_complete = True
-                    print(f"✅ Descarga al 99% - Forzando continuación a processFile")
-                    # Pequeña pausa para asegurar que termine
-                    import time
-                    time.sleep(0.3)
-        
-        # ✅ DESCARGAR CON NUESTRO CALLBACK PERSONALIZADO
-        downloaded_file_path = downloader.download_url(
-            url, 
-            progressfunc=custom_progress_callback
-        )
-        
-        # ✅ VERIFICAR SI SE DESCARGÓ Y PROCESAR
-        if downloaded_file_path and os.path.exists(downloaded_file_path):
-            file_size = os.path.getsize(downloaded_file_path)
-            print(f"📦 Archivo descargado exitosamente: {downloaded_file_path}")
-            print(f"📊 Tamaño: {file_size/1024/1024:.2f} MB")
-            
-            # ✅ ESTA ES LA LÍNEA CLAVE QUE FALTABA
-            processFile(update, bot, message, downloaded_file_path, thread=thread, jdb=jdb)
-        else:
-            print("⚠️ La descarga falló, intentando con Mega...")
-            megadl(update, bot, message, url, file_name, thread, jdb=jdb)
-        
-        # Limpiar thread de cancelación
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
             del bot.threads[thread.cancel_id]
-            
     except Exception as ex:
-        print(f"❌ Error en ddl: {ex}")
-        # Si hay error, intentar con Mega como respaldo
-        try:
-            megadl(update, bot, message, url, file_name, thread, jdb=jdb)
-        except:
-            pass
-
+        print(f"Error en ddl: {ex}")
+        
 def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
     try:
         thread.cancel_id = createID()
