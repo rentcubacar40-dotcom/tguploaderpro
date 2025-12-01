@@ -23,6 +23,7 @@ import ProxyCloud
 import socket
 import S5Crypto
 import threading
+import shutil
 
 # Configurar zona horaria de Cuba
 CUBA_TZ = pytz.timezone('America/Havana')
@@ -493,6 +494,8 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             
         # ✅ NUEVO: SIEMPRE PREGUNTAR CON BOTONES CUANDO SUPERA EL LÍMITE
         if file_size > max_file_size and not is_compressed_file:
+            print(f"[DEBUG] Archivo grande detectado: {original_filename} ({sizeof_fmt(file_size)}) > Límite: {sizeof_fmt(max_file_size)}")
+            
             # Calcular cantidad de partes
             total_parts = (file_size + max_file_size - 1) // max_file_size
             
@@ -532,6 +535,12 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             thread.store('choice_max', max_file_size)
             thread.store('choice_user', username)
             thread.store('choice_message_id', message.message_id)
+            thread.store('choice_update', update)
+            thread.store('choice_bot', bot)
+            thread.store('choice_jdb', jdb)
+            thread.store('temp_file_path', file)
+            
+            print(f"[DEBUG] Botones mostrados. Esperando respuesta del usuario: {username}")
             
             return  # Salir y esperar respuesta del usuario
                         
@@ -677,17 +686,24 @@ def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
         thread.cancel_id = createID()
         bot.threads[thread.cancel_id] = thread
         
+        print(f"[DEBUG] Iniciando descarga de: {url}")
+        
         file = downloader.download_url(url,progressfunc=downloadFile,args=(bot,message,thread))
+        
         if not downloader.stoping:
-            if file:
+            if file and os.path.exists(file):
+                file_size = os.path.getsize(file)
+                print(f"[DEBUG] Archivo descargado: {file} ({sizeof_fmt(file_size)})")
                 processFile(update,bot,message,file,thread=thread,jdb=jdb)
             else:
+                print(f"[DEBUG] Descarga falló, intentando mega...")
                 megadl(update,bot,message,url,file_name,thread,jdb=jdb)
             
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
             del bot.threads[thread.cancel_id]
     except Exception as ex:
         print(f"Error en ddl: {ex}")
+        bot.editMessageText(message, f'<b>❌ Error en descarga:</b>\n<code>{str(ex)}</code>', parse_mode='HTML')
 
 def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
     try:
@@ -819,7 +835,7 @@ def test_moodle_connection(user_info):
 
 def onmessage(update,bot:ObigramClient):
     try:
-        # ✅ NUEVO: MANEJAR CALLBACK QUERIES (BOTONES)
+        # ✅ NUEVO: MANEJAR CALLBACK QUERIES (BOTONES) - CORREGIDO
         if hasattr(update, 'callback_query') and update.callback_query:
             callback_query = update.callback_query
             callback_data = callback_query.data
@@ -827,6 +843,8 @@ def onmessage(update,bot:ObigramClient):
             username = callback_query.from_user.username
             message_id = callback_query.message.message_id
             chat_id = callback_query.message.chat.id
+            
+            print(f"[DEBUG] Callback recibido: {callback_data} de @{username}")
             
             # Extraer acción e ID del thread
             if '_' in callback_data:
@@ -839,6 +857,8 @@ def onmessage(update,bot:ObigramClient):
                         thread = t
                         break
                 
+                print(f"[DEBUG] Thread encontrado: {thread is not None}, waiting_choice: {thread.getStore('waiting_choice') if thread else 'N/A'}")
+                
                 if thread and thread.getStore('waiting_choice'):
                     if thread.getStore('choice_user') == username:
                         # Obtener datos guardados
@@ -847,133 +867,306 @@ def onmessage(update,bot:ObigramClient):
                         file_size = thread.getStore('choice_size')
                         max_size = thread.getStore('choice_max')
                         original_message_id = thread.getStore('choice_message_id')
+                        jdb = thread.getStore('choice_jdb')
                         
-                        # Limpiar estado
+                        # Limpiar estado inmediatamente
                         thread.store('waiting_choice', False)
                         
                         # Eliminar botones
                         bot.editMessageReplyMarkup(chat_id, message_id, reply_markup=None)
                         
+                        # Responder al callback query
+                        bot.answerCallbackQuery(callback_query.id, f"Procesando: {action}")
+                        
                         if action == 'subir':
-                            bot.answerCallbackQuery(callback_query.id, "Subiendo a Moodle...")
+                            print(f"[DEBUG] Usuario eligió SUBIR archivo grande: {filename}")
                             
                             # Actualizar mensaje
                             bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
-                                f'<b>📤 Subiendo a Moodle...</b>\n'
+                                f'<b>📤 Subiendo archivo grande a Moodle...</b>\n'
                                 f'📄 Archivo: {filename}\n'
                                 f'📦 Tamaño: {sizeof_fmt(file_size)}\n'
-                                f'⏳ Comprimiendo y subiendo...',
+                                f'⏳ Comprimiendo y dividiendo en partes...',
                                 parse_mode='HTML'
                             )
                             
-                            # Llamar a processFile para que use la lógica normal de compresión
-                            processFile(update, bot, {'chat_id': chat_id, 'message_id': message_id}, 
-                                       file, thread=thread, jdb=jdb)
-                            return
+                            # Obtener información del usuario
+                            getUser = jdb.get_user(username)
                             
-                        elif action == 'partes':
-                            bot.answerCallbackQuery(callback_query.id, "Preparando partes...")
-                            
-                            # Calcular total de partes
+                            # Calcular número de partes
                             total_parts = (file_size + max_size - 1) // max_size
                             
-                            # Actualizar mensaje
+                            print(f"[DEBUG] Total partes necesarias: {total_parts}")
+                            
+                            try:
+                                # Crear directorio temporal
+                                temp_dir = "temp_" + createID()
+                                os.makedirs(temp_dir, exist_ok=True)
+                                
+                                # Copiar archivo a temporal
+                                temp_file_path = os.path.join(temp_dir, filename)
+                                shutil.copy2(file, temp_file_path)
+                                
+                                # Crear nombre para archivos multiparte
+                                zipname_base = os.path.join(temp_dir, filename.split('.')[0] + createID())
+                                
+                                # Usar MultiFile para dividir el archivo
+                                from zipfile import MultiFile
+                                mult_file = MultiFile(zipname_base, max_size)
+                                
+                                # Crear ZIP comprimido dividido en partes
+                                with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
+                                    zipf.write(temp_file_path, arcname=filename)
+                                
+                                mult_file.close()
+                                
+                                print(f"[DEBUG] Archivo dividido en {len(mult_file.files)} partes")
+                                
+                                # Crear nuevo mensaje para el progreso
+                                progress_message = bot.sendMessage(chat_id, 
+                                    f'<b>🔄 Subiendo {len(mult_file.files)} partes a Moodle...</b>',
+                                    parse_mode='HTML'
+                                )
+                                
+                                # 🔥 SUBIR LAS PARTES A MOODLE USANDO TU MÉTODO EXISTENTE
+                                # Llamar a processUploadFiles con todas las partes
+                                client = processUploadFiles(
+                                    filename,  # Nombre original
+                                    file_size,  # Tamaño original
+                                    mult_file.files,  # Lista de archivos partes
+                                    update,  # Update original
+                                    bot,  # Bot
+                                    progress_message,  # Mensaje de progreso
+                                    thread=thread,
+                                    jdb=jdb
+                                )
+                                
+                                # Limpiar archivos temporales
+                                try:
+                                    shutil.rmtree(temp_dir)
+                                    for f in mult_file.files:
+                                        if os.path.exists(f):
+                                            os.unlink(f)
+                                except Exception as e:
+                                    print(f"[DEBUG] Error limpiando temporales: {e}")
+                                
+                                # Limpiar archivo original
+                                try:
+                                    os.unlink(file)
+                                except:
+                                    pass
+                                
+                                # Si la subida fue exitosa, continuar con procesamiento normal
+                                if client and not (thread and thread.getStore('stop')):
+                                    print(f"[DEBUG] Subida completada exitosamente")
+                                    
+                                    # Obtener enlaces de la subida
+                                    files = []
+                                    if getUser['cloudtype'] == 'moodle':
+                                        if getUser['uploadtype'] == 'evidence':
+                                            try:
+                                                evidname = filename.split('.')[0]
+                                                evidences = client.getEvidences()
+                                                for ev in evidences:
+                                                    if ev['name'] == evidname:
+                                                        files = ev['files']
+                                                        break
+                                                client.logout()
+                                            except: pass
+                                        else:
+                                            for draft in client:
+                                                files.append({'name': draft['file'], 'directurl': draft['url']})
+                                    
+                                    # Aplicar webservice a los enlaces
+                                    for i in range(len(files)):
+                                        url = files[i]['directurl']
+                                        if 'aulacened.uci.cu' in url:
+                                            files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
+                                        elif 'eva.uo.edu.cu' in url and '/webservice/' not in url:
+                                            files[i]['directurl'] = url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
+                                        elif 'cursos.uo.edu.cu' in url and '/webservice/' not in url:
+                                            files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
+                                    
+                                    # Guardar estadísticas
+                                    if not thread or not thread.getStore('stop'):
+                                        save_upload_stats(jdb, username, file_size, filename, len(mult_file.files))
+                                    
+                                    # Mostrar mensaje final
+                                    platform_name = get_platform_name(getUser['moodle_host'])
+                                    finishInfo = format_s1_message("✅ Subida Completada", [
+                                        f"📄 Archivo: {filename}",
+                                        f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                                        f"🔗 Enlaces generados: {len(files)}",
+                                        f"🧩 Partes subidas: {len(mult_file.files)}",
+                                        f"🏫 Plataforma: {platform_name}"
+                                    ])
+                                    
+                                    bot.deleteMessage(chat_id, progress_message.message_id)
+                                    bot.sendMessage(chat_id, finishInfo)
+                                    
+                                    # Enviar enlaces
+                                    if len(files) > 0:
+                                        links_message = "╭━━━━❰ Enlaces ❱━➣\n"
+                                        for i, f in enumerate(files, 1):
+                                            file_display = f"{filename} (Parte {i})"
+                                            link = f"┣⪼ <a href='{f['directurl']}'>{file_display}</a>\n"
+                                            links_message += link
+                                        links_message += "╰━━━━━━━━━━━━━━━➣"
+                                        
+                                        bot.sendMessage(chat_id, links_message, parse_mode='HTML')
+                                        
+                                        # Enviar archivo TXT
+                                        txtname = filename.split('.')[0] + '.txt'
+                                        with open(txtname, 'w', encoding='utf-8') as txt:
+                                            for i, f in enumerate(files):
+                                                txt.write(f"{f['directurl']}")
+                                                if i < len(files) - 1:
+                                                    txt.write("\n\n")
+                                        
+                                        bot.sendFile(chat_id, txtname, 
+                                                   caption=f"📄 <b>Enlaces de {filename}</b>\n🔗 {len(files)} enlaces",
+                                                   parse_mode='HTML')
+                                        os.unlink(txtname)
+                                
+                                elif thread and thread.getStore('stop'):
+                                    print(f"[DEBUG] Subida cancelada por usuario")
+                                    bot.editMessageText(progress_message, '<b>❌ Subida cancelada</b>', parse_mode='HTML')
+                                    
+                            except Exception as e:
+                                print(f"[DEBUG] Error en subida grande: {e}")
+                                import traceback
+                                traceback.print_exc()
+                                
+                                bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
+                                    f'<b>❌ Error subiendo archivo grande:</b>\n<code>{str(e)}</code>',
+                                    parse_mode='HTML'
+                                )
+                                
+                                # Limpiar archivo original
+                                try:
+                                    os.unlink(file)
+                                except:
+                                    pass
+                            
+                        elif action == 'partes':
+                            print(f"[DEBUG] Usuario eligió PARTES para archivo: {filename}")
+                            
                             bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
                                 f'<b>🗜️ Creando partes comprimidas...</b>\n'
                                 f'📄 Archivo: {filename}\n'
                                 f'📦 Tamaño: {sizeof_fmt(file_size)}\n'
-                                f'🧩 Partes: {total_parts}\n'
                                 f'⏳ Esto puede tomar unos momentos...',
                                 parse_mode='HTML'
                             )
                             
-                            # ✅ USAR EL CÓDIGO DE COMPRESIÓN EXISTENTE
-                            # Crear directorio temporal
-                            temp_dir = "temp_" + createID()
-                            os.makedirs(temp_dir, exist_ok=True)
-                            
-                            # Copiar archivo
-                            temp_file_path = os.path.join(temp_dir, filename)
-                            import shutil
-                            shutil.copy2(file, temp_file_path)
-                            
-                            zipname = filename.split('.')[0] + createID()
-                            mult_file = zipfile.MultiFile(zipname, max_size)
-                            
-                            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
-                                zipf.write(temp_file_path, arcname=filename)
-                            
-                            mult_file.close()
-                            
-                            # Limpiar temporal
+                            # 🔥 Usar el código de compresión existente
                             try:
-                                shutil.rmtree(temp_dir)
-                            except: pass
-                            
-                            # Limpiar archivo original
-                            try:
-                                os.unlink(file)
-                            except: pass
-                            
-                            # ✅ ENVIAR CADA PARTE EN MENSAJES SEPARADOS
-                            # Mensaje informativo
-                            info_msg = format_s1_message("🗜️ Partes Comprimidas Listas", [
-                                f"📄 Archivo: {filename}",
-                                f"📦 Tamaño original: {sizeof_fmt(file_size)}",
-                                f"🧩 Total partes: {len(mult_file.files)}",
-                                f"📏 Tamaño por parte: ~{sizeof_fmt(max_size)}",
-                                "",
-                                "⬇️ <b>Descargando partes...</b>"
-                            ])
-                            
-                            bot.editMessageText({'chat_id': chat_id, 'message_id': message_id}, info_msg, parse_mode='HTML')
-                            
-                            # Enviar cada parte
-                            import time
-                            sent_count = 0
-                            
-                            for i, part_file in enumerate(mult_file.files, 1):
+                                # Crear directorio temporal
+                                temp_dir = "temp_" + createID()
+                                os.makedirs(temp_dir, exist_ok=True)
+                                
+                                # Copiar archivo
+                                temp_file_path = os.path.join(temp_dir, filename)
+                                shutil.copy2(file, temp_file_path)
+                                
+                                zipname = filename.split('.')[0] + createID()
+                                from zipfile import MultiFile
+                                mult_file = MultiFile(zipname, max_size)
+                                
+                                with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
+                                    zipf.write(temp_file_path, arcname=filename)
+                                
+                                mult_file.close()
+                                
+                                # Limpiar temporal
                                 try:
-                                    # Enviar archivo
-                                    caption = f"📦 <b>Parte {i}/{len(mult_file.files)}</b>\n📄 {filename}"
-                                    bot.sendFile(chat_id, part_file, caption=caption, parse_mode='HTML')
-                                    
-                                    sent_count += 1
-                                    
-                                    # Pequeña pausa
-                                    if i < len(mult_file.files):
-                                        time.sleep(0.8)
+                                    shutil.rmtree(temp_dir)
+                                except: pass
+                                
+                                # Limpiar archivo original
+                                try:
+                                    os.unlink(file)
+                                except: pass
+                                
+                                # ✅ ENVIAR CADA PARTE EN MENSAJES SEPARADOS
+                                total_files = len(mult_file.files)
+                                bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
+                                    f'<b>✅ Partes creadas exitosamente</b>\n'
+                                    f'📄 Archivo: {filename}\n'
+                                    f'🧩 Total partes: {total_files}\n'
+                                    f'📦 Tamaño por parte: ~{sizeof_fmt(max_size)}\n\n'
+                                    f'<b>⬇️ Enviando partes...</b>',
+                                    parse_mode='HTML'
+                                )
+                                
+                                # Enviar cada parte
+                                import time
+                                sent_count = 0
+                                
+                                for i, part_file in enumerate(mult_file.files, 1):
+                                    try:
+                                        # Enviar archivo
+                                        caption = f"📦 <b>Parte {i}/{total_files}</b>\n📄 {filename}"
+                                        bot.sendFile(chat_id, part_file, caption=caption, parse_mode='HTML')
                                         
-                                except Exception as e:
-                                    print(f"Error enviando parte {i}: {e}")
-                                    bot.sendMessage(chat_id, f"❌ Error enviando parte {i}: {str(e)}")
-                            
-                            # ✅ NO GUARDAR ESTADÍSTICAS (no se subió a Moodle)
-                            
-                            # Limpiar partes
-                            try:
-                                for zip_file in mult_file.files:
-                                    if os.path.exists(zip_file):
-                                        os.unlink(zip_file)
-                            except: pass
-                            return
-                            
+                                        sent_count += 1
+                                        
+                                        # Pequeña pausa para evitar límites de Telegram
+                                        if i < total_files:
+                                            time.sleep(0.8)
+                                            
+                                    except Exception as e:
+                                        print(f"Error enviando parte {i}: {e}")
+                                        bot.sendMessage(chat_id, f"❌ Error enviando parte {i}: {str(e)}")
+                                
+                                # ✅ NO GUARDAR ESTADÍSTICAS (no se subió a Moodle)
+                                
+                                # Limpiar partes
+                                try:
+                                    for zip_file in mult_file.files:
+                                        if os.path.exists(zip_file):
+                                            os.unlink(zip_file)
+                                except: pass
+                                
+                            except Exception as e:
+                                print(f"Error creando partes: {e}")
+                                bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
+                                    f'<b>❌ Error creando partes:</b>\n<code>{str(e)}</code>',
+                                    parse_mode='HTML'
+                                )
+                                
                         elif action == 'cancelar':
-                            bot.answerCallbackQuery(callback_query.id, "Subida cancelada")
+                            print(f"[DEBUG] Usuario CANCELÓ subida")
                             
                             # Cancelar subida
                             try:
-                                os.unlink(file)
+                                if os.path.exists(file):
+                                    os.unlink(file)
                             except: pass
                             
                             bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
                                 '<b>❌ Subida cancelada</b>',
                                 parse_mode='HTML'
                             )
-                            return
+                        
+                        # 🔥 Limpiar todos los datos almacenados
+                        thread.store('choice_file', None)
+                        thread.store('choice_filename', None)
+                        thread.store('choice_size', None)
+                        thread.store('choice_max', None)
+                        thread.store('choice_user', None)
+                        thread.store('choice_message_id', None)
+                        thread.store('choice_update', None)
+                        thread.store('choice_bot', None)
+                        thread.store('choice_jdb', None)
+                        thread.store('temp_file_path', None)
+                            
+                    else:
+                        bot.answerCallbackQuery(callback_query.id, "No tienes permiso para esta acción")
+                else:
+                    bot.answerCallbackQuery(callback_query.id, "Acción no válida o expirada")
                 
-                bot.answerCallbackQuery(callback_query.id, "Acción no válida o expirada")
-                return
+                return  # 🔥 IMPORTANTE: Salir después de manejar callback
             
             bot.answerCallbackQuery(callback_query.id, "Error procesando botón")
             return
@@ -2015,7 +2208,7 @@ def onmessage(update,bot:ObigramClient):
 
 def start_health_server(port):
     try:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STACK)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind(('0.0.0.0', port))
         server_socket.listen(5)
