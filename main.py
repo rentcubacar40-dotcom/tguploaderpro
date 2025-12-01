@@ -23,7 +23,6 @@ import ProxyCloud
 import socket
 import S5Crypto
 import threading
-import shutil
 
 # Configurar zona horaria de Cuba
 CUBA_TZ = pytz.timezone('America/Havana')
@@ -486,197 +485,201 @@ def processFile(update,bot,message,file,thread=None,jdb=None):
             else:
                 max_file_size = 1024 * 1024 * 100  # 100 MB para CENED por defecto
         
+        file_upload_count = 0
+        client = None
+        findex = 0
+        
+        if thread and thread.getStore('stop'):
+            try:
+                os.unlink(file)
+            except:pass
+            return
+        
         # Obtener el nombre base del archivo original
         original_filename = file.split('/')[-1] if '/' in file else file
         base_name = original_filename.split('.')[0]
         file_extension = original_filename.split('.')[-1].lower() if '.' in original_filename else ''
         is_compressed_file = file_extension in ['zip', 'rar', '7z', 'tar', 'gz']
             
-        # ✅ NUEVO: SIEMPRE PREGUNTAR CON BOTONES CUANDO SUPERA EL LÍMITE
         if file_size > max_file_size and not is_compressed_file:
-            print(f"[DEBUG] Archivo grande detectado: {original_filename} ({sizeof_fmt(file_size)}) > Límite: {sizeof_fmt(max_file_size)}")
-            
             # Calcular cantidad de partes
             total_parts = (file_size + max_file_size - 1) // max_file_size
             
-            # Mostrar pregunta con botones
+            # Mostrar información de compresión (MEJORADA con cantidad de partes)
             platform_name = get_platform_name(getUser['moodle_host'])
             
-            askInfo = format_s1_message("📦 Archivo Grande Detectado", [
+            compresingInfo = format_s1_message("🗜️ Comprimiendo Archivo", [
                 f"📄 Archivo: {original_filename}",
-                f"📏 Tamaño: {sizeof_fmt(file_size)}",
-                f"🎯 Límite Moodle: {sizeof_fmt(max_file_size)}",
-                f"🏫 Plataforma: {platform_name}",
-                f"🧩 Partes necesarias: {total_parts}",
-                "",
-                "❓ ¿Cómo deseas proceder?"
+                f"📦 Tamaño original: {sizeof_fmt(file_size)}",
+                f"🗂️ Partes: {total_parts}",
+                f"🏫 Plataforma: {platform_name}"
             ])
             
-            # Crear botones inline
-            keyboard = {
-                'inline_keyboard': [
-                    [
-                        {'text': f'📤 Subir ({total_parts} partes)', 'callback_data': f'subir_{thread.thread_id}'},
-                        {'text': f'🗜️ Partes ({total_parts} archivos)', 'callback_data': f'partes_{thread.thread_id}'}
-                    ],
-                    [
-                        {'text': '❌ Cancelar', 'callback_data': f'cancelar_{thread.thread_id}'}
-                    ]
-                ]
-            }
+            bot.editMessageText(message, compresingInfo)
             
-            bot.editMessageText(message, askInfo, parse_mode='HTML', reply_markup=keyboard)
+            # CREAR ARCHIVO TEMPORAL CON NOMBRE CORRECTO
+            temp_dir = "temp_" + createID()
+            os.makedirs(temp_dir, exist_ok=True)
             
-            # Guardar estado para esperar respuesta
-            thread.store('waiting_choice', True)
-            thread.store('choice_file', file)
-            thread.store('choice_filename', original_filename)
-            thread.store('choice_size', file_size)
-            thread.store('choice_max', max_file_size)
-            thread.store('choice_user', username)
-            thread.store('choice_message_id', message.message_id)
-            thread.store('choice_update', update)
-            thread.store('choice_bot', bot)
-            thread.store('choice_jdb', jdb)
-            thread.store('temp_file_path', file)
+            # Copiar el archivo a un directorio temporal con su nombre original
+            temp_file_path = os.path.join(temp_dir, original_filename)
+            import shutil
+            shutil.copy2(file, temp_file_path)
             
-            print(f"[DEBUG] Botones mostrados. Esperando respuesta del usuario: {username}")
+            zipname = base_name + createID()
+            mult_file = zipfile.MultiFile(zipname, max_file_size)
             
-            return  # Salir y esperar respuesta del usuario
+            # CREAR ZIP CON EL ARCHIVO Y SU NOMBRE ORIGINAL
+            with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
+                # Agregar el archivo con su nombre original preservado
+                zipf.write(temp_file_path, arcname=original_filename)
+            
+            mult_file.close()
+            
+            # LIMPIAR ARCHIVO TEMPORAL
+            try:
+                shutil.rmtree(temp_dir)
+            except: pass
+            
+            # Usar el nombre base original para la subida
+            client = processUploadFiles(original_filename, file_size, mult_file.files, update, bot, message, thread=thread, jdb=jdb)
+            
+            try:
+                os.unlink(file)
+            except:pass
+            file_upload_count = len(mult_file.files)
+            
+            # LIMPIAR ARCHIVOS TEMPORALES ZIP
+            try:
+                for zip_file in mult_file.files:
+                    if os.path.exists(zip_file):
+                        os.unlink(zip_file)
+            except:pass
                         
         else:
-            # Para archivos pequeños o ya comprimidos, continuar normal
-            file_upload_count = 0
-            client = None
-            findex = 0
-            
-            if thread and thread.getStore('stop'):
-                try:
-                    os.unlink(file)
-                except:pass
-                return
-            
-            # Para archivos pequeños, subir directamente
+            # Para archivos pequeños o ya comprimidos, usar el nombre original
             client = processUploadFiles(original_filename,file_size,[file],update,bot,message,thread=thread,jdb=jdb)
             file_upload_count = 1
-                
-            if thread and thread.getStore('stop'):
-                return
-                
-            # Continuar con procesamiento normal...
-            bot.editMessageText(message,'<b>📄 Preparando enlaces...</b>', parse_mode='HTML')
-            evidname = ''
-            files = []
-            if client:
-                if getUser['cloudtype'] == 'moodle':
-                    if getUser['uploadtype'] == 'evidence':
-                        try:
-                            evidname = base_name  # Usar el nombre base original
-                            txtname = evidname + '.txt'
-                            evidences = client.getEvidences()
-                            for ev in evidences:
-                                if ev['name'] == evidname:
-                                   files = ev['files']
-                                   break
-                                if len(ev['files'])>0:
-                                   findex+=1
-                            client.logout()
-                        except:pass
-                    if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
-                       for draft in client:
-                           files.append({'name':draft['file'],'directurl':draft['url']})
-                else:
-                    for data in client:
-                        files.append({'name':data['name'],'directurl':data['url']})
+            
+        if thread and thread.getStore('stop'):
+            return
+            
+        # ✅ ELIMINADO: Guardado antiguo de estadísticas aquí
+        # Los datos se guardarán SOLO al final exitoso
+            
+        bot.editMessageText(message,'<b>📄 Preparando enlaces...</b>', parse_mode='HTML')
+        evidname = ''
+        files = []
+        if client:
+            if getUser['cloudtype'] == 'moodle':
+                if getUser['uploadtype'] == 'evidence':
+                    try:
+                        evidname = base_name  # Usar el nombre base original
+                        txtname = evidname + '.txt'
+                        evidences = client.getEvidences()
+                        for ev in evidences:
+                            if ev['name'] == evidname:
+                               files = ev['files']
+                               break
+                            if len(ev['files'])>0:
+                               findex+=1
+                        client.logout()
+                    except:pass
+                if getUser['uploadtype'] == 'draft' or getUser['uploadtype'] == 'blog' or getUser['uploadtype']=='calendario':
+                   for draft in client:
+                       files.append({'name':draft['file'],'directurl':draft['url']})
+            else:
+                for data in client:
+                    files.append({'name':data['name'],'directurl':data['url']})
 
-                # COMPATIBILIDAD CON NUBES UO - Incluir webservice para todas las plataformas
-                for i in range(len(files)):
-                    url = files[i]['directurl']
-                    
-                    # Para CENED - reemplazo existente
-                    if 'aulacened.uci.cu' in url:
-                        files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
-                    
-                    # Para EVA UO - agregar webservice
-                    elif 'eva.uo.edu.cu' in url and '/webservice/' not in url:
-                        files[i]['directurl'] = url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
-                    
-                    # Para CURSOS UO - agregar webservice  
-                    elif 'cursos.uo.edu.cu' in url and '/webservice/' not in url:
-                        files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
+            # COMPATIBILIDAD CON NUBES UO - Incluir webservice para todas las plataformas
+            for i in range(len(files)):
+                url = files[i]['directurl']
+                
+                # Para CENED - reemplazo existente
+                if 'aulacened.uci.cu' in url:
+                    files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
+                
+                # Para EVA UO - agregar webservice
+                elif 'eva.uo.edu.cu' in url and '/webservice/' not in url:
+                    files[i]['directurl'] = url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
+                
+                # Para CURSOS UO - agregar webservice  
+                elif 'cursos.uo.edu.cu' in url and '/webservice/' not in url:
+                    files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
 
-                bot.deleteMessage(message.chat.id,message.message_id)
-                
-                # Usar el nombre original del archivo
-                total_parts = file_upload_count
-                
-                # ✅ GUARDAR ESTADÍSTICAS SOLO AQUÍ - CUANDO TODO ESTÉ COMPLETAMENTE TERMINADO
-                if not thread or not thread.getStore('stop'):
-                    save_upload_stats(jdb, username, file_size, original_filename, file_upload_count)
+            bot.deleteMessage(message.chat.id,message.message_id)
+            
+            # Usar el nombre original del archivo
+            total_parts = file_upload_count
+            
+            # ✅ GUARDAR ESTADÍSTICAS SOLO AQUÍ - CUANDO TODO ESTÉ COMPLETAMENTE TERMINADO
+            if not thread or not thread.getStore('stop'):
+                save_upload_stats(jdb, username, file_size, original_filename, file_upload_count)
 
-                # MENSAJE FINAL SEGÚN PLATAFORMA
-                platform_name = get_platform_name(getUser['moodle_host'])
-                finish_title = "✅ Subida Completada"
+            # MENSAJE FINAL SEGÚN PLATAFORMA
+            platform_name = get_platform_name(getUser['moodle_host'])
+            finish_title = "✅ Subida Completada"
 
-                if platform_name == 'CENED':
-                    finishInfo = format_s1_message(finish_title, [
-                        f"📄 Archivo: {original_filename}",
-                        f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                        f"🔗 Enlaces generados: {len(files)}",
-                        f"⏱️ Duración enlaces: 8-30 minutos",
-                        f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
-                    ])
-                elif platform_name == 'INSTEC':  # NUEVA PLATAFORMA CON CREDENCIALES
-                    # Obtener las credenciales del usuario actual
-                    user_instec = getUser['moodle_user']
-                    pass_instec = getUser['moodle_password']
-                    
-                    finishInfo = format_s1_message(finish_title, [
-                        f"📄 Archivo: {original_filename}",
-                        f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                        f"🔗 Enlaces generados: {len(files)}",
-                        f"⏱️ Duración enlaces: Desconocido",
-                        f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único",
-                        f"🔐 Descarga vía cuenta",
-                        f"👤 Usuario: {user_instec}",
-                        f"🔑 Contraseña: {pass_instec}"
-                    ])
-                else:
-                    finishInfo = format_s1_message(finish_title, [
-                        f"📄 Archivo: {original_filename}",
-                        f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                        f"🔗 Enlaces generados: {len(files)}",
-                        f"⏱️ Duración enlaces: 3 días",
-                        f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
-                    ])
+            if platform_name == 'CENED':
+                finishInfo = format_s1_message(finish_title, [
+                    f"📄 Archivo: {original_filename}",
+                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                    f"🔗 Enlaces generados: {len(files)}",
+                    f"⏱️ Duración enlaces: 8-30 minutos",
+                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
+                ])
+            elif platform_name == 'INSTEC':  # NUEVA PLATAFORMA CON CREDENCIALES
+                # Obtener las credenciales del usuario actual
+                user_instec = getUser['moodle_user']
+                pass_instec = getUser['moodle_password']
                 
-                bot.sendMessage(message.chat.id, finishInfo)
+                finishInfo = format_s1_message(finish_title, [
+                    f"📄 Archivo: {original_filename}",
+                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                    f"🔗 Enlaces generados: {len(files)}",
+                    f"⏱️ Duración enlaces: Desconocido",
+                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único",
+                    f"🔐 Descarga vía cuenta",
+                    f"👤 Usuario: {user_instec}",
+                    f"🔑 Contraseña: {pass_instec}"
+                ])
+            else:
+                finishInfo = format_s1_message(finish_title, [
+                    f"📄 Archivo: {original_filename}",
+                    f"📦 Tamaño total: {sizeof_fmt(file_size)}",
+                    f"🔗 Enlaces generados: {len(files)}",
+                    f"⏱️ Duración enlaces: 3 días",
+                    f"💾 Partes: {total_parts}" if total_parts > 1 else "💾 Archivo único"
+                ])
+            
+            bot.sendMessage(message.chat.id, finishInfo)
+            
+            # ENVIAR ENLACES CLICKEABLES EN AZUL
+            if len(files) > 0:
+                # Crear mensaje con enlaces en HTML para que sean clickeables
+                links_message = "╭━━━━❰ Enlaces ❱━➣\n"
                 
-                # ENVIAR ENLACES CLICKEABLES EN AZUL
-                if len(files) > 0:
-                    # Crear mensaje con enlaces en HTML para que sean clickeables
-                    links_message = "╭━━━━❰ Enlaces ❱━➣\n"
+                for i, f in enumerate(files, 1):
+                    # Determinar qué nombre mostrar
+                    if len(files) > 1:
+                        # Si hay múltiples partes: "Nombre (Parte X)"
+                        file_display = f"{original_filename} (Parte {i})"
+                    else:
+                        # Si es un solo archivo: Solo el nombre
+                        file_display = f"{original_filename}"
                     
-                    for i, f in enumerate(files, 1):
-                        # Determinar qué nombre mostrar
-                        if len(files) > 1:
-                            # Si hay múltiples partes: "Nombre (Parte X)"
-                            file_display = f"{original_filename} (Parte {i})"
-                        else:
-                            # Si es un solo archivo: Solo el nombre
-                            file_display = f"{original_filename}"
-                        
-                        # Crear enlace HTML
-                        link = f"┣⪼ <a href='{f['directurl']}'>{file_display}</a>\n"
-                        links_message += link
-                    
-                    links_message += "╰━━━━━━━━━━━━━━━➣"
-                    
-                    # Enviar con parse_mode HTML para que los enlaces sean clickeables
-                    bot.sendMessage(message.chat.id, links_message, parse_mode='HTML')
-                    
-                    txtname = base_name + '.txt'
-                    sendTxt(txtname,files,update,bot)
+                    # Crear enlace HTML
+                    link = f"┣⪼ <a href='{f['directurl']}'>{file_display}</a>\n"
+                    links_message += link
+                
+                links_message += "╰━━━━━━━━━━━━━━━➣"
+                
+                # Enviar con parse_mode HTML para que los enlaces sean clickeables
+                bot.sendMessage(message.chat.id, links_message, parse_mode='HTML')
+                
+                txtname = base_name + '.txt'
+                sendTxt(txtname,files,update,bot)
     except Exception as ex:
         print(f"Error en processFile: {ex}")
 
@@ -686,24 +689,17 @@ def ddl(update,bot,message,url,file_name='',thread=None,jdb=None):
         thread.cancel_id = createID()
         bot.threads[thread.cancel_id] = thread
         
-        print(f"[DEBUG] Iniciando descarga de: {url}")
-        
         file = downloader.download_url(url,progressfunc=downloadFile,args=(bot,message,thread))
-        
         if not downloader.stoping:
-            if file and os.path.exists(file):
-                file_size = os.path.getsize(file)
-                print(f"[DEBUG] Archivo descargado: {file} ({sizeof_fmt(file_size)})")
+            if file:
                 processFile(update,bot,message,file,thread=thread,jdb=jdb)
             else:
-                print(f"[DEBUG] Descarga falló, intentando mega...")
                 megadl(update,bot,message,url,file_name,thread,jdb=jdb)
             
         if hasattr(thread, 'cancel_id') and thread.cancel_id in bot.threads:
             del bot.threads[thread.cancel_id]
     except Exception as ex:
         print(f"Error en ddl: {ex}")
-        bot.editMessageText(message, f'<b>❌ Error en descarga:</b>\n<code>{str(ex)}</code>', parse_mode='HTML')
 
 def megadl(update,bot,message,megaurl,file_name='',thread=None,jdb=None):
     try:
@@ -835,343 +831,6 @@ def test_moodle_connection(user_info):
 
 def onmessage(update,bot:ObigramClient):
     try:
-        # ✅ NUEVO: MANEJAR CALLBACK QUERIES (BOTONES) - CORREGIDO
-        if hasattr(update, 'callback_query') and update.callback_query:
-            callback_query = update.callback_query
-            callback_data = callback_query.data
-            user_id = callback_query.from_user.id
-            username = callback_query.from_user.username
-            message_id = callback_query.message.message_id
-            chat_id = callback_query.message.chat.id
-            
-            print(f"[DEBUG] Callback recibido: {callback_data} de @{username}")
-            
-            # Extraer acción e ID del thread
-            if '_' in callback_data:
-                action, thread_id = callback_data.split('_', 1)
-                
-                # Buscar el thread correspondiente
-                thread = None
-                for t in bot.threads.values():
-                    if hasattr(t, 'thread_id') and str(t.thread_id) == thread_id:
-                        thread = t
-                        break
-                
-                print(f"[DEBUG] Thread encontrado: {thread is not None}, waiting_choice: {thread.getStore('waiting_choice') if thread else 'N/A'}")
-                
-                if thread and thread.getStore('waiting_choice'):
-                    if thread.getStore('choice_user') == username:
-                        # Obtener datos guardados
-                        file = thread.getStore('choice_file')
-                        filename = thread.getStore('choice_filename')
-                        file_size = thread.getStore('choice_size')
-                        max_size = thread.getStore('choice_max')
-                        original_message_id = thread.getStore('choice_message_id')
-                        jdb = thread.getStore('choice_jdb')
-                        
-                        # Limpiar estado inmediatamente
-                        thread.store('waiting_choice', False)
-                        
-                        # Eliminar botones
-                        bot.editMessageReplyMarkup(chat_id, message_id, reply_markup=None)
-                        
-                        # Responder al callback query
-                        bot.answerCallbackQuery(callback_query.id, f"Procesando: {action}")
-                        
-                        if action == 'subir':
-                            print(f"[DEBUG] Usuario eligió SUBIR archivo grande: {filename}")
-                            
-                            # Actualizar mensaje
-                            bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
-                                f'<b>📤 Subiendo archivo grande a Moodle...</b>\n'
-                                f'📄 Archivo: {filename}\n'
-                                f'📦 Tamaño: {sizeof_fmt(file_size)}\n'
-                                f'⏳ Comprimiendo y dividiendo en partes...',
-                                parse_mode='HTML'
-                            )
-                            
-                            # Obtener información del usuario
-                            getUser = jdb.get_user(username)
-                            
-                            # Calcular número de partes
-                            total_parts = (file_size + max_size - 1) // max_size
-                            
-                            print(f"[DEBUG] Total partes necesarias: {total_parts}")
-                            
-                            try:
-                                # Crear directorio temporal
-                                temp_dir = "temp_" + createID()
-                                os.makedirs(temp_dir, exist_ok=True)
-                                
-                                # Copiar archivo a temporal
-                                temp_file_path = os.path.join(temp_dir, filename)
-                                shutil.copy2(file, temp_file_path)
-                                
-                                # Crear nombre para archivos multiparte
-                                zipname_base = os.path.join(temp_dir, filename.split('.')[0] + createID())
-                                
-                                # Usar MultiFile para dividir el archivo
-                                from zipfile import MultiFile
-                                mult_file = MultiFile(zipname_base, max_size)
-                                
-                                # Crear ZIP comprimido dividido en partes
-                                with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
-                                    zipf.write(temp_file_path, arcname=filename)
-                                
-                                mult_file.close()
-                                
-                                print(f"[DEBUG] Archivo dividido en {len(mult_file.files)} partes")
-                                
-                                # Crear nuevo mensaje para el progreso
-                                progress_message = bot.sendMessage(chat_id, 
-                                    f'<b>🔄 Subiendo {len(mult_file.files)} partes a Moodle...</b>',
-                                    parse_mode='HTML'
-                                )
-                                
-                                # 🔥 SUBIR LAS PARTES A MOODLE USANDO TU MÉTODO EXISTENTE
-                                # Llamar a processUploadFiles con todas las partes
-                                client = processUploadFiles(
-                                    filename,  # Nombre original
-                                    file_size,  # Tamaño original
-                                    mult_file.files,  # Lista de archivos partes
-                                    update,  # Update original
-                                    bot,  # Bot
-                                    progress_message,  # Mensaje de progreso
-                                    thread=thread,
-                                    jdb=jdb
-                                )
-                                
-                                # Limpiar archivos temporales
-                                try:
-                                    shutil.rmtree(temp_dir)
-                                    for f in mult_file.files:
-                                        if os.path.exists(f):
-                                            os.unlink(f)
-                                except Exception as e:
-                                    print(f"[DEBUG] Error limpiando temporales: {e}")
-                                
-                                # Limpiar archivo original
-                                try:
-                                    os.unlink(file)
-                                except:
-                                    pass
-                                
-                                # Si la subida fue exitosa, continuar con procesamiento normal
-                                if client and not (thread and thread.getStore('stop')):
-                                    print(f"[DEBUG] Subida completada exitosamente")
-                                    
-                                    # Obtener enlaces de la subida
-                                    files = []
-                                    if getUser['cloudtype'] == 'moodle':
-                                        if getUser['uploadtype'] == 'evidence':
-                                            try:
-                                                evidname = filename.split('.')[0]
-                                                evidences = client.getEvidences()
-                                                for ev in evidences:
-                                                    if ev['name'] == evidname:
-                                                        files = ev['files']
-                                                        break
-                                                client.logout()
-                                            except: pass
-                                        else:
-                                            for draft in client:
-                                                files.append({'name': draft['file'], 'directurl': draft['url']})
-                                    
-                                    # Aplicar webservice a los enlaces
-                                    for i in range(len(files)):
-                                        url = files[i]['directurl']
-                                        if 'aulacened.uci.cu' in url:
-                                            files[i]['directurl'] = url.replace('://aulacened.uci.cu/', '://aulacened.uci.cu/webservice/')
-                                        elif 'eva.uo.edu.cu' in url and '/webservice/' not in url:
-                                            files[i]['directurl'] = url.replace('://eva.uo.edu.cu/', '://eva.uo.edu.cu/webservice/')
-                                        elif 'cursos.uo.edu.cu' in url and '/webservice/' not in url:
-                                            files[i]['directurl'] = url.replace('://cursos.uo.edu.cu/', '://cursos.uo.edu.cu/webservice/')
-                                    
-                                    # Guardar estadísticas
-                                    if not thread or not thread.getStore('stop'):
-                                        save_upload_stats(jdb, username, file_size, filename, len(mult_file.files))
-                                    
-                                    # Mostrar mensaje final
-                                    platform_name = get_platform_name(getUser['moodle_host'])
-                                    finishInfo = format_s1_message("✅ Subida Completada", [
-                                        f"📄 Archivo: {filename}",
-                                        f"📦 Tamaño total: {sizeof_fmt(file_size)}",
-                                        f"🔗 Enlaces generados: {len(files)}",
-                                        f"🧩 Partes subidas: {len(mult_file.files)}",
-                                        f"🏫 Plataforma: {platform_name}"
-                                    ])
-                                    
-                                    bot.deleteMessage(chat_id, progress_message.message_id)
-                                    bot.sendMessage(chat_id, finishInfo)
-                                    
-                                    # Enviar enlaces
-                                    if len(files) > 0:
-                                        links_message = "╭━━━━❰ Enlaces ❱━➣\n"
-                                        for i, f in enumerate(files, 1):
-                                            file_display = f"{filename} (Parte {i})"
-                                            link = f"┣⪼ <a href='{f['directurl']}'>{file_display}</a>\n"
-                                            links_message += link
-                                        links_message += "╰━━━━━━━━━━━━━━━➣"
-                                        
-                                        bot.sendMessage(chat_id, links_message, parse_mode='HTML')
-                                        
-                                        # Enviar archivo TXT
-                                        txtname = filename.split('.')[0] + '.txt'
-                                        with open(txtname, 'w', encoding='utf-8') as txt:
-                                            for i, f in enumerate(files):
-                                                txt.write(f"{f['directurl']}")
-                                                if i < len(files) - 1:
-                                                    txt.write("\n\n")
-                                        
-                                        bot.sendFile(chat_id, txtname, 
-                                                   caption=f"📄 <b>Enlaces de {filename}</b>\n🔗 {len(files)} enlaces",
-                                                   parse_mode='HTML')
-                                        os.unlink(txtname)
-                                
-                                elif thread and thread.getStore('stop'):
-                                    print(f"[DEBUG] Subida cancelada por usuario")
-                                    bot.editMessageText(progress_message, '<b>❌ Subida cancelada</b>', parse_mode='HTML')
-                                    
-                            except Exception as e:
-                                print(f"[DEBUG] Error en subida grande: {e}")
-                                import traceback
-                                traceback.print_exc()
-                                
-                                bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
-                                    f'<b>❌ Error subiendo archivo grande:</b>\n<code>{str(e)}</code>',
-                                    parse_mode='HTML'
-                                )
-                                
-                                # Limpiar archivo original
-                                try:
-                                    os.unlink(file)
-                                except:
-                                    pass
-                            
-                        elif action == 'partes':
-                            print(f"[DEBUG] Usuario eligió PARTES para archivo: {filename}")
-                            
-                            bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
-                                f'<b>🗜️ Creando partes comprimidas...</b>\n'
-                                f'📄 Archivo: {filename}\n'
-                                f'📦 Tamaño: {sizeof_fmt(file_size)}\n'
-                                f'⏳ Esto puede tomar unos momentos...',
-                                parse_mode='HTML'
-                            )
-                            
-                            # 🔥 Usar el código de compresión existente
-                            try:
-                                # Crear directorio temporal
-                                temp_dir = "temp_" + createID()
-                                os.makedirs(temp_dir, exist_ok=True)
-                                
-                                # Copiar archivo
-                                temp_file_path = os.path.join(temp_dir, filename)
-                                shutil.copy2(file, temp_file_path)
-                                
-                                zipname = filename.split('.')[0] + createID()
-                                from zipfile import MultiFile
-                                mult_file = MultiFile(zipname, max_size)
-                                
-                                with zipfile.ZipFile(mult_file, mode='w', compression=zipfile.ZIP_DEFLATED) as zipf:
-                                    zipf.write(temp_file_path, arcname=filename)
-                                
-                                mult_file.close()
-                                
-                                # Limpiar temporal
-                                try:
-                                    shutil.rmtree(temp_dir)
-                                except: pass
-                                
-                                # Limpiar archivo original
-                                try:
-                                    os.unlink(file)
-                                except: pass
-                                
-                                # ✅ ENVIAR CADA PARTE EN MENSAJES SEPARADOS
-                                total_files = len(mult_file.files)
-                                bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
-                                    f'<b>✅ Partes creadas exitosamente</b>\n'
-                                    f'📄 Archivo: {filename}\n'
-                                    f'🧩 Total partes: {total_files}\n'
-                                    f'📦 Tamaño por parte: ~{sizeof_fmt(max_size)}\n\n'
-                                    f'<b>⬇️ Enviando partes...</b>',
-                                    parse_mode='HTML'
-                                )
-                                
-                                # Enviar cada parte
-                                import time
-                                sent_count = 0
-                                
-                                for i, part_file in enumerate(mult_file.files, 1):
-                                    try:
-                                        # Enviar archivo
-                                        caption = f"📦 <b>Parte {i}/{total_files}</b>\n📄 {filename}"
-                                        bot.sendFile(chat_id, part_file, caption=caption, parse_mode='HTML')
-                                        
-                                        sent_count += 1
-                                        
-                                        # Pequeña pausa para evitar límites de Telegram
-                                        if i < total_files:
-                                            time.sleep(0.8)
-                                            
-                                    except Exception as e:
-                                        print(f"Error enviando parte {i}: {e}")
-                                        bot.sendMessage(chat_id, f"❌ Error enviando parte {i}: {str(e)}")
-                                
-                                # ✅ NO GUARDAR ESTADÍSTICAS (no se subió a Moodle)
-                                
-                                # Limpiar partes
-                                try:
-                                    for zip_file in mult_file.files:
-                                        if os.path.exists(zip_file):
-                                            os.unlink(zip_file)
-                                except: pass
-                                
-                            except Exception as e:
-                                print(f"Error creando partes: {e}")
-                                bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
-                                    f'<b>❌ Error creando partes:</b>\n<code>{str(e)}</code>',
-                                    parse_mode='HTML'
-                                )
-                                
-                        elif action == 'cancelar':
-                            print(f"[DEBUG] Usuario CANCELÓ subida")
-                            
-                            # Cancelar subida
-                            try:
-                                if os.path.exists(file):
-                                    os.unlink(file)
-                            except: pass
-                            
-                            bot.editMessageText({'chat_id': chat_id, 'message_id': message_id},
-                                '<b>❌ Subida cancelada</b>',
-                                parse_mode='HTML'
-                            )
-                        
-                        # 🔥 Limpiar todos los datos almacenados
-                        thread.store('choice_file', None)
-                        thread.store('choice_filename', None)
-                        thread.store('choice_size', None)
-                        thread.store('choice_max', None)
-                        thread.store('choice_user', None)
-                        thread.store('choice_message_id', None)
-                        thread.store('choice_update', None)
-                        thread.store('choice_bot', None)
-                        thread.store('choice_jdb', None)
-                        thread.store('temp_file_path', None)
-                            
-                    else:
-                        bot.answerCallbackQuery(callback_query.id, "No tienes permiso para esta acción")
-                else:
-                    bot.answerCallbackQuery(callback_query.id, "Acción no válida o expirada")
-                
-                return  # 🔥 IMPORTANTE: Salir después de manejar callback
-            
-            bot.answerCallbackQuery(callback_query.id, "Error procesando botón")
-            return
-        
-        # ✅ CONTINUAR CON EL CÓDIGO NORMAL PARA MENSAJES DE TEXTO
         thread = bot.this_thread
         username = update.message.sender.username
         tl_admin_user = os.environ.get('tl_admin_user','Eliel_21')
@@ -1187,6 +846,7 @@ def onmessage(update,bot:ObigramClient):
                 if username == tl_admin_user:
                     jdb.create_admin(username)
                 else:
+                    # Usuarios normales no se crean automáticamente, deben ser agregados por admin
                     bot.sendMessage(update.message.chat.id,
                                    "<b>🚫 Acceso Restringido</b>\n\n"
                                    "No tienes acceso a este bot.\n\n"
@@ -1214,8 +874,6 @@ def onmessage(update,bot:ObigramClient):
 
         is_text = msgText != ''
         isadmin = jdb.is_admin(username)
-        
-        # ✅ NOTA: YA NO SE MANEJAN RESPUESTAS DE TEXTO, SOLO BOTONES
         
         # COMANDOS NUEVOS: ESTADÍSTICAS
         if '/mystats' in msgText:
@@ -1513,6 +1171,7 @@ def onmessage(update,bot:ObigramClient):
                 bot.sendMessage(update.message.chat.id, f'<b>❌ Error:</b> {str(e)}', parse_mode='HTML')
             return
 
+        # ... (el resto de tu código existente se mantiene igual)
         # COMANDOS DE CONFIGURACIÓN RÁPIDA PARA ADMIN
         if '/moodle_eva' in msgText and isadmin:
             user_info['moodle_host'] = 'https://eva.uo.edu.cu/'
