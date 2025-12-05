@@ -17,10 +17,9 @@ class ProxyCloud(object):
 
 def parse(text):
     """
-    Versión CORREGIDA que:
-    1. Intenta desencriptar (si usa S5Crypto)
-    2. Si falla, usa proxy directo (no encriptado)
-    3. Devuelve DICT para MoodleClient
+    Versión COMPATIBLE que:
+    1. Devuelve dict para MoodleClient (principal)
+    2. Mantiene clase ProxyCloud para compatibilidad
     """
     if not text:
         return None
@@ -30,26 +29,26 @@ def parse(text):
         if not text_str:
             return None
         
-        # Si YA es dict, devolverlo (compatibilidad)
+        # Si YA es dict (compatibilidad futura), devolverlo
         if isinstance(text, dict):
             return text
         
         # Separar protocolo
-        if '://' in text_str:
-            protocol, rest = text_str.split('://', 1)
+        if text_str.startswith('socks4://'):
+            protocol = 'socks4'
+            rest = text_str[9:]
+        elif text_str.startswith('socks5://'):
+            protocol = 'socks5'
+            rest = text_str[9:]
+        elif text_str.startswith('http://'):
+            protocol = 'http'
+            rest = text_str[7:]
+        elif text_str.startswith('https://'):
+            protocol = 'https'
+            rest = text_str[8:]
         else:
             protocol = 'socks5'
             rest = text_str
-        
-        # Intentar desencriptar (solo si parece encriptado)
-        try:
-            # Solo si es largo y no tiene : (posible encriptado)
-            if len(rest) > 20 and ':' not in rest:
-                decrypted = S5Crypto.decrypt(rest)
-                rest = decrypted
-        except:
-            # Si no está encriptado, usar tal cual
-            pass
         
         # Extraer IP:puerto
         if ':' in rest:
@@ -62,11 +61,7 @@ def parse(text):
             ip = rest
             port = 1080
         
-        # Validar protocolo
-        if protocol not in ['socks4', 'socks5', 'http', 'https']:
-            protocol = 'socks5'
-        
-        # ✅ IMPORTANTE: Devolver DICT para MoodleClient
+        # ✅ DEVOLVER DICT (compatible con MoodleClient)
         return {
             'http': f'{protocol}://{ip}:{port}',
             'https': f'{protocol}://{ip}:{port}'
@@ -74,8 +69,8 @@ def parse(text):
     
     except Exception as e:
         print(f"[ProxyCloud] Error: {e}")
-        # En caso de error, intentar devolver string como dict
-        if text and '://' in str(text):
-            return {'http': str(text), 'https': str(text)}
+        # Fallback: devolver string como dict
+        if text and isinstance(text, str):
+            return {'http': text, 'https': text}
     
     return None
