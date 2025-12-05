@@ -16,7 +16,7 @@ import socks
 import asyncio
 import threading
 import S5Crypto
-from ProxyCloud import ProxyCloud  # ✅ Importación agregada
+import ProxyCloud  # ✅ Importación agregada
 
 class CallingUpload:
     def __init__(self, func, filename, args):
@@ -635,3 +635,4 @@ class MoodleClient(object):
     def logout(self):
         logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
         self.session.post(logouturl,proxies=self.proxy,headers=self.baseheaders)
+
