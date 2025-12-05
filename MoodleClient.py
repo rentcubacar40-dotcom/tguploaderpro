@@ -16,6 +16,7 @@ import socks
 import asyncio
 import threading
 import S5Crypto
+from ProxyCloud import ProxyCloud  # ✅ Importación agregada
 
 class CallingUpload:
     def __init__(self, func, filename, args):
@@ -43,7 +44,7 @@ class CallingUpload:
         except:pass
 
 class MoodleClient(object):
-    def __init__(self, user,passw,host='',repo_id=4,proxy=None):
+    def __init__(self, user, passw, host='', repo_id=4, proxy=None):
         self.username = user
         self.password = passw
         self.session = requests.Session()
@@ -55,40 +56,11 @@ class MoodleClient(object):
         self.userid = ''
         self.repo_id = repo_id
         self.sesskey = ''
-        self.proxy = self.parse_proxy(proxy)  # Parsear proxy como dict para requests
+        
+        # ✅ CORRECCIÓN: Usar ProxyCloud.parse directamente
+        self.proxy = ProxyCloud.parse(proxy)
+        
         self.baseheaders = headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'}
-
-    def parse_proxy(self, proxy_str):
-        """Convierte string de proxy a formato dict para requests"""
-        if not proxy_str:
-            return None
-            
-        # Si ya es un dict (por si acaso), devolverlo tal cual
-        if isinstance(proxy_str, dict):
-            return proxy_str
-            
-        # Si es string vacío
-        if not proxy_str.strip():
-            return None
-            
-        # Verificar si es formato SOCKS5
-        if proxy_str.startswith('socks5://'):
-            return {
-                'http': proxy_str,
-                'https': proxy_str
-            }
-        # Si no tiene protocolo, asumir SOCKS5
-        elif '://' not in proxy_str:
-            return {
-                'http': f'socks5://{proxy_str}',
-                'https': f'socks5://{proxy_str}'
-            }
-        # Para otros protocolos (http, https)
-        else:
-            return {
-                'http': proxy_str,
-                'https': proxy_str
-            }
 
     def getsession(self):
         return self.session
