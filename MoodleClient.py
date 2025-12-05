@@ -58,30 +58,37 @@ class MoodleClient(object):
         self.proxy = self.parse_proxy(proxy)  # Parsear proxy como dict para requests
         self.baseheaders = headers = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'}
 
-    def parse_proxy(self, proxy_input):
-    """Versión simplificada - solo devuelve dict para requests"""
-    if not proxy_input:
-        return None
-    
-    # Si ya es dict, usarlo
-    if isinstance(proxy_input, dict):
-        return proxy_input
-    
-    # Si es string
-    if isinstance(proxy_input, str):
-        proxy_str = proxy_str.strip()
+    def parse_proxy(self, proxy_str):
+        """Convierte string de proxy a formato dict para requests"""
         if not proxy_str:
             return None
-        
-        # Asegurar que tiene protocolo
-        if not proxy_str.startswith(('socks4://', 'socks5://', 'http://', 'https://')):
-            proxy_str = f'socks5://{proxy_str}'
-        
-        # Devolver dict para requests
-        # NO configurar sockets globales - requests[socks] lo maneja
-        return {'http': proxy_str, 'https': proxy_str}
-    
-    return None
+            
+        # Si ya es un dict (por si acaso), devolverlo tal cual
+        if isinstance(proxy_str, dict):
+            return proxy_str
+            
+        # Si es string vacío
+        if not proxy_str.strip():
+            return None
+            
+        # Verificar si es formato SOCKS5
+        if proxy_str.startswith('socks5://'):
+            return {
+                'http': proxy_str,
+                'https': proxy_str
+            }
+        # Si no tiene protocolo, asumir SOCKS5
+        elif '://' not in proxy_str:
+            return {
+                'http': f'socks5://{proxy_str}',
+                'https': f'socks5://{proxy_str}'
+            }
+        # Para otros protocolos (http, https)
+        else:
+            return {
+                'http': proxy_str,
+                'https': proxy_str
+            }
 
     def getsession(self):
         return self.session
@@ -656,4 +663,3 @@ class MoodleClient(object):
     def logout(self):
         logouturl = self.path + 'login/logout.php?sesskey=' + self.sesskey
         self.session.post(logouturl,proxies=self.proxy,headers=self.baseheaders)
-
